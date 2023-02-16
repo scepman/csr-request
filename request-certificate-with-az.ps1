@@ -10,6 +10,9 @@ C. Hannebauer - glueckkanja-gab
   .PARAMETER ScepmanUrl
     Url of SCEPman without trailing slash, e.g. https://your-scepman.azurewebsites.net
 
+  .PARAMETER ScepmanApiScope
+    The scope of the API, which by default has the form api://<api-id>. You can copy the value from your Certificate Master's SCEPmanAPIScope setting (see https://docs.scepman.com/advanced-configuration/application-settings-1/azure-ad#appconfig-authconfig-scepmanapiscope)
+
   .PARAMETER CertificateSubject
     The subject of the certificate to be created, e.g. CN=MyCert
 
@@ -22,18 +25,18 @@ C. Hannebauer - glueckkanja-gab
   .NOTES
     Available under the MIT license. See LICENSE file for details.
 
+    You may need to call az login before running this script and log in as a service principal or Managed Identity (https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli?view=azure-cli-latest#sign-in-with-a-service-principal)
+    Alternatively, you may modify the scepman-api app registration to allow users for the App role CSR.Request.Db, and additionally, 
+    add az (04b07795-8ddb-461a-bbee-02f9e1bf7b46) as authorized client application to your Azure AD app registration 'scepman-api'.
+    This alternative allows users to request certificates.
+
 #>
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory=$true)]
-    [string]
-    $ScepmanUrl,
-    [Parameter]
-    [string]
-    $certificateSubject = "CN=MyCert",
-    [Parameter]
-    [string]
-    $password = "password"
+    [Parameter(Mandatory=$true)][string]$ScepmanUrl,
+    [Parameter(Mandatory=$true)][string]$ScepmanApiScope,
+    [string]$certificateSubject = "CN=MyCert",
+    [string]$password = "password"
 )
 
 # Create a new RSA key pair and certificate request using .NET
@@ -46,7 +49,7 @@ $binCsr = $csr.CreateSigningRequest()
 [System.IO.File]::WriteAllBytes("mycert.csr", $binCsr)
 
 # Submit the CSR to the SCEPman REST API using az, which handles authentication
-$null = az rest --method POST --uri "$ScepmanUrl/api/csr" --body '@mycert.csr' --headers "Content-Type=application/octet-stream" --output-file mycert.cer
+$null = az rest --method POST --uri "$ScepmanUrl/api/csr" --body '@mycert.csr' --headers "Content-Type=application/octet-stream" --output-file mycert.cer --resource $ScepmanApiScope
 
 # Extract the certificate from the response, merge it with the RSA key, and save as Pkcs12
 $certificate = new-object System.Security.Cryptography.X509Certificates.X509Certificate2("mycert.cer")
