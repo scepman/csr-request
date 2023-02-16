@@ -1,3 +1,28 @@
+<# 
+request-certificate-with-az.ps1 Version: 20230216
+C. Hannebauer - glueckkanja-gab
+
+  .DESCRIPTION
+    Uses .NET to generate an RSA key, az to submit it to SCEPman's CSR endpoint with AAD authentication, and again .NET Core to merge the issued certificate with the RSA private key to a PFX file.
+    The script creates some files in the working directory.
+    This script serves as an example for how to use the SCEPman REST API to request certificates. It is not intended to be used in production.
+
+	.PARAMETER ScepmanUrl
+    Url of SCEPman without trailing slash, e.g. https://your-scepman.azurewebsites.net
+	
+	.PARAMETER CertificateSubject
+    The subject of the certificate to be created, e.g. CN=MyCert
+
+	.PARAMETER Password
+    The password for the PFX file that will be created
+
+	.EXAMPLE
+    .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -CertificateSubject "CN=MyCert" -Password "password"
+
+  .NOTES
+    Available under the MIT license. See LICENSE file for details.
+
+#>
 [CmdletBinding()]
 param (
     [Parameter(Mandatory=$true)]
