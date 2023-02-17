@@ -20,8 +20,8 @@ namespace CsrClient
             get
             {
                 string url = Url.TrimEnd('/');
-                if (!url.EndsWith("/csr"))
-                    url += "/csr";
+                if (!url.EndsWith("/api/csr"))
+                    url += "/api/csr";
                 return url + '/';
             }
         }
