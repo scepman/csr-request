@@ -14,11 +14,45 @@ AccessToken accessToken;
 if (args.Length > 2)
 {
     string clientId = args[2];
-    string clientSecret = args[3];
     string tenantId = args[4];
-    ClientSecretCredential accessCredential = new(tenantId, clientId, clientSecret);
-    accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
 
+    string authenticationMethod = args[3];
+
+    if (authenticationMethod.StartsWith("secret:")) // Authenticate with Client Secret
+    {
+        string clientSecret = authenticationMethod["secret:".Length..];
+        ClientSecretCredential accessCredential = new(tenantId, clientId, clientSecret);
+        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
+    }
+    else if (authenticationMethod.StartsWith("cert"))   // Authenticate with Client Certificate (usually self-signed)
+    {
+        X509Certificate2 clientAuthenticationCertificate;
+        if (authenticationMethod.StartsWith("cert-file:"))  // Read certificate from a PFX file
+        {
+            string certificatePath = authenticationMethod["cert-file:".Length..];
+            string certificatePassword = args[5];
+            clientAuthenticationCertificate = new(certificatePath, certificatePassword);
+        }
+        else if (authenticationMethod.StartsWith("cert-store:")) // Use certificate stored in the user's MY store
+        {
+            string certificateThumbprint = authenticationMethod["cert-store:".Length..];
+
+            X509Store myStore = new(StoreName.My, StoreLocation.CurrentUser);
+            myStore.Open(OpenFlags.ReadOnly);
+            clientAuthenticationCertificate = myStore.Certificates.Single(cert => cert.Thumbprint.Equals(certificateThumbprint, StringComparison.InvariantCultureIgnoreCase));
+        }
+        else
+        {
+            throw new ArgumentException("Invalid authentication method");
+        }
+
+        ClientCertificateCredential accessCredential = new(tenantId, clientId, clientAuthenticationCertificate);
+        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
+    }
+    else
+    {
+        throw new ArgumentException("Invalid authentication method");
+    }
 }
 else
 {
