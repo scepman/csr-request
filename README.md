@@ -32,7 +32,7 @@ If you also pass CLIENT_ID andd TENANT_ID, this will authenticate as an Enterpri
 
 You may create a self-signed certificate with PowerShell with this command, for example:
 
-`New-SelfSignedCertificate -Subject "CN=scepman-client-cert" -CertStoreLocation "Cert:\CurrentUser\My" -KeySpec Signature -KeyLength 2048 -KeyAlgorithm RSA -HashAlgorithm SHA256 -NotAfter (Get-Date).AddYears(10)`
+`New-SelfSignedCertificate -Subject "CN=scepman-client-cert" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy NonExportable -KeySpec Signature -KeyLength 2048 -KeyAlgorithm RSA -HashAlgorithm SHA256 -NotAfter (Get-Date).AddYears(10)`
 
 Afterwards, export the public part of the certificate and add it to your app registration as a certificate under the "Certificates & secrets" section.
 
