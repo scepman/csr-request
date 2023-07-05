@@ -71,7 +71,7 @@ namespace CsrClient
 
         private byte[] ParseCertificateFromPkcs7(byte[] bytes)
         {
-            if (bytes[0..2] == Encoding.ASCII.GetBytes("MII"))  // Base64 encoded?
+            if (bytes[0] == (byte)'M')  // Base64 encoded?
                 bytes = Convert.FromBase64String(Encoding.ASCII.GetString(bytes));
 
             SignedCms cms = new();
