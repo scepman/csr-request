@@ -51,7 +51,7 @@ if (command == Command.csr || command == Command.est)
 else if (command == Command.reenroll)
 {
     accessToken = new();    // not needed for EST ReEnrollment
-    clientAuthenticationCertificate = ProvideAuthenticationCertificate(args[3], args[2]);
+    clientAuthenticationCertificate = ProvideAuthenticationCertificate(args.Length > 3 ? args[3] : null, args[2]);
 }
 else
     throw new NotSupportedException();
