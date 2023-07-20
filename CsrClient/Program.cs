@@ -63,6 +63,9 @@ CertificateRequest request = new(
     key,
     HashAlgorithmName.SHA256
 );
+OidCollection ekus = new();
+ekus.Add(new Oid("1.3.6.1.5.5.7.3.2"));  // Client Authentication
+request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(ekus, true));
 byte[] baCsr = request.CreateSigningRequest();
 
 
