@@ -44,7 +44,7 @@ if (command == Command.csr || command == Command.est)
     else
     {
         DefaultAzureCredential accessCredential = new(); // Tries all kinds of available credentials, see https://docs.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet
-        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { scepmanApiScope }));
+        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
     }
 
 }
