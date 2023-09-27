@@ -46,13 +46,15 @@ $csr = new-object System.Security.Cryptography.X509Certificates.CertificateReque
   [System.Security.Cryptography.HashAlgorithmName]::SHA256, 
   [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
 $binCsr = $csr.CreateSigningRequest()
-[System.IO.File]::WriteAllBytes("mycert.csr", $binCsr)
+$csrPath = Join-Path (Get-Location) "mycert.csr"
+[System.IO.File]::WriteAllBytes($csrPath, $binCsr)
 
 # Submit the CSR to the SCEPman REST API using az, which handles authentication
 $null = az rest --method POST --uri "$ScepmanUrl/api/csr" --body '@mycert.csr' --headers "Content-Type=application/octet-stream" --output-file mycert.cer --resource $ScepmanApiScope
 
 # Extract the certificate from the response, merge it with the RSA key, and save as Pkcs12
-$certificate = new-object System.Security.Cryptography.X509Certificates.X509Certificate2("mycert.cer")
+$certPath = Join-Path (Get-Location) "mycert.cer"
+$certificate = new-object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath)
 $pkcs12 = new-object System.Security.Cryptography.Pkcs.Pkcs12Builder
 $pkcs12CertContent = new-object System.Security.Cryptography.Pkcs.Pkcs12SafeContents
 $null = $pkcs12CertContent.AddCertificate($certificate)
@@ -62,8 +64,9 @@ $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
   1000)
 $null = $pkcs12CertContent.AddShroudedKey($rsakey, $password, $passwordParameters)
 $null = $pkcs12.AddSafeContentsUnencrypted($pkcs12CertContent)
-$pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA256, 1000)
+$pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA1, 2000)
 $baPfx = $pkcs12.Encode()
 
 # Save the Pkcs12 to disk
-[System.IO.File]::WriteAllBytes("mycert.pfx", $baPfx)
+$pfxPath = Join-Path (Get-Location) "mycert.pfx"
+[System.IO.File]::WriteAllBytes($pfxPath, $baPfx)
