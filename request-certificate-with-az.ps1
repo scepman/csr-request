@@ -1,5 +1,5 @@
 <# 
-request-certificate-with-az.ps1 Version: 20230216
+request-certificate-with-az.ps1 Version: 20231101
 C. Hannebauer - glueckkanja-gab
 
   .DESCRIPTION
@@ -19,6 +19,9 @@ C. Hannebauer - glueckkanja-gab
   .PARAMETER Password
     The password for the PFX file that will be created
 
+  .PARAMETER LegacyCryptography
+    Use legacy cryptography (3DES) for the PFX file. This is required for MacOS at least until version 14 and Windows Server version 2016 and older.
+
   .EXAMPLE
     .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -CertificateSubject "CN=MyCert" -Password "password"
 
@@ -36,7 +39,8 @@ param (
     [Parameter(Mandatory=$true)][string]$ScepmanUrl,
     [Parameter(Mandatory=$true)][string]$ScepmanApiScope,
     [string]$certificateSubject = "CN=MyCert",
-    [string]$password = "password"
+    [string]$password = "password",
+    [switch]$legacyCryptography
 )
 
 # Create a new RSA key pair and certificate request using .NET
@@ -58,13 +62,24 @@ $certificate = new-object System.Security.Cryptography.X509Certificates.X509Cert
 $pkcs12 = new-object System.Security.Cryptography.Pkcs.Pkcs12Builder
 $pkcs12CertContent = new-object System.Security.Cryptography.Pkcs.Pkcs12SafeContents
 $null = $pkcs12CertContent.AddCertificate($certificate)
-$passwordParameters = new-object System.Security.Cryptography.PbeParameters(
-  [System.Security.Cryptography.PbeEncryptionAlgorithm]::Aes256Cbc,
-  [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-  1000)
+if ($legacyCryptography.IsPresent) {
+  $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
+    [System.Security.Cryptography.PbeEncryptionAlgorithm]::TripleDes3KeyPkcs12,
+    [System.Security.Cryptography.HashAlgorithmName]::SHA1,
+    2000)
+} else {
+  $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
+    [System.Security.Cryptography.PbeEncryptionAlgorithm]::Aes256Cbc,
+    [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+    1000)
+}
 $null = $pkcs12CertContent.AddShroudedKey($rsakey, $password, $passwordParameters)
 $null = $pkcs12.AddSafeContentsUnencrypted($pkcs12CertContent)
-$pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA1, 2000)
+if ($legacyCryptography.IsPresent) {
+  $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA1, 2000)
+} else {
+  $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA256, 1000)
+}
 $baPfx = $pkcs12.Encode()
 
 # Save the Pkcs12 to disk
