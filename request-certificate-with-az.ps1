@@ -23,7 +23,7 @@ C. Hannebauer - glueckkanja-gab
     Use legacy cryptography (3DES) for the PFX file. This is required for MacOS at least until version 14 and Windows Server version 2016 and older.
 
   .EXAMPLE
-    .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -CertificateSubject "CN=MyCert" -Password "password"
+    .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -ScepmanApiScope api://80f570a1-becd-44f5-896f-03ddf4262fde -CertificateSubject "CN=MyCert" -Password "password"
 
   .NOTES
     Available under the MIT license. See LICENSE file for details.
@@ -40,7 +40,7 @@ param (
     [Parameter(Mandatory=$true)][string]$ScepmanApiScope,
     [string]$certificateSubject = "CN=MyCert",
     [string]$password = "password",
-    [switch]$legacyCryptography
+    [switch]$LegacyCryptography
 )
 
 # Create a new RSA key pair and certificate request using .NET
@@ -62,7 +62,7 @@ $certificate = new-object System.Security.Cryptography.X509Certificates.X509Cert
 $pkcs12 = new-object System.Security.Cryptography.Pkcs.Pkcs12Builder
 $pkcs12CertContent = new-object System.Security.Cryptography.Pkcs.Pkcs12SafeContents
 $null = $pkcs12CertContent.AddCertificate($certificate)
-if ($legacyCryptography.IsPresent) {
+if ($LegacyCryptography.IsPresent) {
   $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
     [System.Security.Cryptography.PbeEncryptionAlgorithm]::TripleDes3KeyPkcs12,
     [System.Security.Cryptography.HashAlgorithmName]::SHA1,
@@ -75,7 +75,7 @@ if ($legacyCryptography.IsPresent) {
 }
 $null = $pkcs12CertContent.AddShroudedKey($rsakey, $password, $passwordParameters)
 $null = $pkcs12.AddSafeContentsUnencrypted($pkcs12CertContent)
-if ($legacyCryptography.IsPresent) {
+if ($LegacyCryptography.IsPresent) {
   $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA1, 2000)
 } else {
   $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA256, 1000)
