@@ -49,6 +49,17 @@ $csr = new-object System.Security.Cryptography.X509Certificates.CertificateReque
   $certificateSubject, $rsakey, 
   [System.Security.Cryptography.HashAlgorithmName]::SHA256, 
   [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+
+# Add the EKU extension to the CSR, as an example for adding an extension
+$ekuOidCollection = new-object System.Security.Cryptography.OidCollection
+$oidServerAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1") # Server Authentication
+$null = $ekuOidCollection.Add($oidServerAuth)
+$oidClientAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.2") # Client Authentication
+$null = $ekuOidCollection.Add($oidClientAuth)
+$extEku = new-object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($ekuOidCollection, $false)
+
+$csr.CertificateExtensions.Add($extEku)
+
 $binCsr = $csr.CreateSigningRequest()
 $csrPath = Join-Path (Get-Location) "mycert.csr"
 [System.IO.File]::WriteAllBytes($csrPath, $binCsr)
