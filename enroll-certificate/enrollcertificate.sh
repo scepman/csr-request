@@ -7,7 +7,7 @@ echo Running in $SHELL
 if ! [ -x "$(command -v dotnet)" ]; then
   wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
   chmod +x ./dotnet-install.sh
-  ./dotnet-install.sh --version latest
+  ./dotnet-install.sh --version latest --channel 7.0
 fi
 
 # Download csrrequest
