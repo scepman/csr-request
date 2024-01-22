@@ -10,7 +10,6 @@ if ! [ -x "$(command -v dotnet)" ]; then
   ./dotnet-install.sh --version latest
 fi
 
-
 # Download csrrequest
 
 # run csrrequest and enroll a certificate
