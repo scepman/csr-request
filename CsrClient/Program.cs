@@ -36,22 +36,23 @@ if (command == Command.csr || command == Command.est)
             ClientCertificateCredential accessCredential = new(tenantId, clientId, clientAuthenticationCertificate);
             accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
         }
+        else if (authenticationMethod == "interactive")
+        {
+            InteractiveBrowserCredentialOptions options = new()
+            {
+                ClientId = clientId,
+                TenantId = tenantId,
+            };
+            InteractiveBrowserCredential accessCredential = new(options);
+            accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }, tenantId: tenantId));
+        }
         else
         {
             throw new ArgumentException("Invalid authentication method");
         }
     }
     else
-    {
-        InteractiveBrowserCredentialOptions options = new()
-        {
-            ClientId = "7e247597-8d08-4306-b613-a61663d84cb3",
-            TenantId = "4f0d83e2-2b31-4b16-a211-623a9cd859c4",
-        };
-        InteractiveBrowserCredential accessCredential = new(options); // Tries all kinds of available credentials, see https://docs.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet
-        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }, tenantId: "4f0d83e2-2b31-4b16-a211-623a9cd859c4"));
-    }
-
+        throw new NotSupportedException();
 }
 else if (command == Command.reenroll)
 {
