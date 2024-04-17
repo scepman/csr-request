@@ -1,36 +1,47 @@
 #!/bin/bash
 
-# $1 = the certificate's name
+# $1 = the name of the certificate being renewed
 # $2 = SCEPman instance URL
-# $3 = the path to the certificate
-# $4 = the path to the key
+# $3 = certificate directory
+# $4 = key directory
+# $5 = path to the root certificate (assuming it is pem encoded)
 
 # Example command: 
-# sh renewcertificate.sh my-certificate https://app-scepman-csz5hqanxf6cs.azurewebsites.net/ csrclient csrclient
+# sh renewcertificate.sh my-certificate https://app-scepman-csz5hqanxf6cs.azurewebsites.net/ csrclient csrclient /etc/ssl/scepman-dxun-root.pem
+
+CERTNAME="$1"
+APPSERVICE_URL="$2"
+ABS_CERDIR=`readlink -f "$3"`
+ABS_KEYDIR=`readlink -f "$4"`
+ABS_ROOT=`readlink -f "$5"`
+
+# TODO
+# Check if issuing certificate is scepman root?
+# Check entire chain of trust?
 
 # if revoked then do nothing
-# May be working? have to check with expired cert
-if openssl ocsp -text -issuer /etc/ssl/certs/ca-certificates.crt -cert $3/$1.pem -text -url http://app-scepman-csz5hqanxf6cs.azurewebsites.net/ocsp; then
-    # do nothing
-    echo "ocsp not expired"
+OCSP_STATUS=`openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CERDIR/$CERTNAME.pem" -url "$APPSERVICE_URL/ocsp"` 
+TRIMMED_STATUS=`echo "$OCSP_STATUS" | grep "good"`
+if ! [ -z "${TRIMMED_STATUS}" ]; then
+    if ! openssl x509 -checkend 864000 -noout -in "$ABS_CERDIR/$CERTNAME.pem"; then
+        # Certificate will expire within 10 days, renew using mTLS. 
+
+        # Create a CSR
+        openssl genrsa -des3 -out temporary.key 2048
+        # I don't think the config is important apart from maybe the challenge password? ATM included in package.
+        openssl req -new -key temporary.key -sha256 -out temporary.csr -config openssl-ipserver.config
+        # Create renewed version of certificate.
+        echo "-----BEGIN PKCS7-----" > "$CERTNAME.p7b"
+        curl -X POST --data "@temporary.csr" -H "Content-Type: application/pkcs10" --cert "$ABS_CERDIR/$CERTNAME.pem" --key "$ABS_KEYDIR/$CERTNAME.key"  --cacert /etc/ssl/certs/ca-certificates.crt "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$CERTNAME.p7b"
+        printf "\n-----END PKCS7-----" >> "$CERTNAME.p7b"
+        openssl pkcs7 -print_certs -in "$CERTNAME.p7b" -out "$ABS_CERDIR/$CERTNAME.pem"
+        cp temporary.key "$ABS_KEYDIR/$CERTNAME.key"
+        # TODO? Remove old expired certificate? Remove temporary files?
+    else 
+        echo "certificate not expiring soon"
+    fi
 else
-    echo "ocsp expired"
+    echo "ocsp failed - probably invalid paths or revoked certificate" #can update this to reflect all of openssl ocsp errors
 fi
 
 
-if openssl x509 -checkend 864000 -noout -in $3/$1; then
-    # Certificate is not expiring in next 10 days - don't renew
-else
-    # Certificate will expire soon, renew using mTLS. Seems to work after testing.
-    # Create a CSR
-    openssl genrsa -des3 -out temporary.key 2048
-    # I don't think the config is important apart from maybe the challenge password? 
-    openssl req -new -key temporary.key -sha256 -out temporary.csr -config openssl-ipserver.config
-    # Create renewed version of certificate.
-    echo "-----BEGIN PKCS7-----" > $1.p7b
-    curl -X POST --data "@temporary.csr" -H "Content-Type: application/pkcs10" --cert $3/$1.pem --key $4/$1.key  --cacert /etc/ssl/certs/ca-certificates.crt $2/.well-known/est/simplereenroll >> $1.p7b
-    printf "\n-----END PKCS7-----" >> $1.p7b
-    openssl pkcs7 -print_certs -in $1.p7b -out $3/$1.pem
-    cp temporary.key $4/$1.key
-    # TODO? Remove old expired certificate? Remove temporary files?
-fi
