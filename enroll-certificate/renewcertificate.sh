@@ -1,53 +1,67 @@
 #!/bin/bash
 
-# $1 = the name of the certificate being renewed
-# $2 = SCEPman instance URL
-# $3 = certificate directory
-# $4 = key directory
-# $5 = path to the root certificate (assuming it is pem encoded)
+# $1 = SCEPman instance URL
+# $2 = certificate
+# $3 = key 
+# $4 = root certificate (assuming it is pem encoded)
+# $5 = csr config file
 
 # Example command: 
-# sh renewcertificate.sh my-certificate https://app-scepman-csz5hqanxf6cs.azurewebsites.net/ . .  /etc/ssl/scepman-dxun-root.pem
+# sh renewcertificate.sh https://app-scepman-csz5hqanxf6cs.azurewebsites.net/ . .  /etc/ssl/scepman-dxun-root.pem opensslconf.config
 
 
 
-CERTNAME="$1"
-APPSERVICE_URL="$2"
-ABS_CERDIR=`readlink -f "$3"`
-ABS_KEYDIR=`readlink -f "$4"`
-ABS_ROOT=`readlink -f "$5"`
+APPSERVICE_URL="$1"
+ABS_CER=`readlink -f "$2"`
+ABS_KEY=`readlink -f "$3"`
+ABS_ROOT=`readlink -f "$4"`
+ABS_CONF=`readlink -f "$5"`
 
-echo "I ran" >> "/mnt/c/Users/BenGodwin/OneDrive - glueckkanja-gab/Desktop/csr-request/enroll-certificate/file.txt" 
+TEMP=$(mktemp -d tmpXXXXXXX)
+TEMP_CSR="$TEMP/tmp.csr"
+TEMP_KEY="$TEMP/tmp.key"
+TEMP_P7B="$TEMP/tmp.p7b"
+TEMP_PEM="$TEMP/tmp.pem"
 
-# TODO
-# Check if issuing certificate is scepman root?
-# Check entire chain of trust?
+SECONDS_IN_DAY="84600"
+RENEWAL_THRESHOLD_DAYS="10" # Can be changed - number of days before expiry that a certificate will be renewed
+RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
-pwd
+
+trap "rm -r $TEMP" EXIT
 
 # if revoked then do nothing
-OCSP_STATUS=`openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CERDIR/$CERTNAME.pem" -url "$APPSERVICE_URL/ocsp"` 
+OCSP_STATUS=`openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CER" -url "$APPSERVICE_URL/ocsp"` 
 TRIMMED_STATUS=`echo "$OCSP_STATUS" | grep "good"`
 if ! [ -z "${TRIMMED_STATUS}" ]; then
-    if ! openssl x509 -checkend 864000 -noout -in "$ABS_CERDIR/$CERTNAME.pem"; then
+    if ! openssl x509 -checkend $RENEWAL_THRESHOLD -noout -in "$ABS_CER"; then
         # Certificate will expire within 10 days, renew using mTLS. 
-
+        
         # Create a CSR
-        openssl genrsa -out temporary.key 2048
+        openssl genrsa -out "$TEMP_KEY" 4096
         # I don't think the config is important apart from maybe the challenge password? ATM included in package.
-        openssl req -new -key temporary.key -sha256 -out temporary.csr -config "/mnt/c/Users/BenGodwin/OneDrive - glueckkanja-gab/Desktop/csr-request/enroll-certificate/opensslconf.config" #fix this hard coding
+        openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -config "$ABS_CONF"
         # Create renewed version of certificate.
-        echo "-----BEGIN PKCS7-----" > "$CERTNAME.p7b"
-        curl -X POST --data "@temporary.csr" -H "Content-Type: application/pkcs10" --cert "$ABS_CERDIR/$CERTNAME.pem" --key "$ABS_KEYDIR/$CERTNAME.key"  --cacert /etc/ssl/certs/ca-certificates.crt "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$CERTNAME.p7b"
-        printf "\n-----END PKCS7-----" >> "$CERTNAME.p7b"
-        openssl pkcs7 -print_certs -in "$CERTNAME.p7b" -out "$ABS_CERDIR/$CERTNAME.pem"
-        cp temporary.key "$ABS_KEYDIR/$CERTNAME.key"
-        # TODO? Remove old expired certificate? Remove temporary files?
+        echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
+        curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert /etc/ssl/certs/ca-certificates.crt "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"
+        printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
+        openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
+        if [ -f $TEMP_PEM ]; then
+            # only execute if new pem file created:
+            cp "$TEMP_KEY" "$ABS_KEY"
+            cp "$TEMP_PEM" "$ABS_CER"
+        else
+            echo "Renewal endpoint returned an error"
+            cat $TEMP/err 
+            exit 1
+        fi
+        
     else 
         echo "certificate not expiring soon"
+        exit 1
     fi
 else
     echo "ocsp failed - probably invalid paths or revoked certificate" #can update this to reflect all of openssl ocsp errors
+    exit 1
 fi
-
 
