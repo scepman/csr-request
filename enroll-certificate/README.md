@@ -9,7 +9,8 @@ Enrolls a certificate using SCEPman's csr client, and sets up cronjobs to renew 
 NOTE: This script is not currently configured properly to be used in production for two main reasons:
 1. Renewal script and config file are not stored in a sensible place - cronjobs currently expect the renewal script to stay in whichever directory the enrollment scripts are run from
 2. There is not currently a role in SCEPman that allows users to enroll certificates to only themselves - users can either enroll any kind of certificate they wish or cannot enroll certificates at all. The engineering team is aware of this.
-for testing it would (currently) probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to run the renewal script regularly. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
+
+For testing it would (currently) probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to run the renewal script regularly. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
 
 Before running you must:
 - Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
