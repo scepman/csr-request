@@ -3,12 +3,12 @@
 # $1 = SCEPman instance URL
 # $2 = certificate
 # $3 = key 
-# $4 = root certificate (assuming it is pem encoded)
+# $4 = root certificate (pem encoded)
 # $5 = csr config file
+# $6 = renewal threshold: 
 
 # Example command: 
-# sh renewcertificate.sh https://app-scepman-csz5hqanxf6cs.azurewebsites.net/ . .  /etc/ssl/scepman-dxun-root.pem opensslconf.config
-
+# sh renewcertificate.sh https://your-scepman-domain.net/ cert.pem cert.key root.pem openssl-conf.config 10
 
 
 APPSERVICE_URL="$1"
@@ -24,7 +24,7 @@ TEMP_P7B="$TEMP/tmp.p7b"
 TEMP_PEM="$TEMP/tmp.pem"
 
 SECONDS_IN_DAY="84600"
-RENEWAL_THRESHOLD_DAYS="10" # Can be changed - number of days before expiry that a certificate will be renewed
+RENEWAL_THRESHOLD_DAYS="$6" # Can be changed - number of days before expiry that a certificate will be renewed
 RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
 
@@ -43,7 +43,7 @@ if ! [ -z "${TRIMMED_STATUS}" ]; then
         openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -config "$ABS_CONF"
         # Create renewed version of certificate.
         echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
-        curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert /etc/ssl/certs/ca-certificates.crt "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"
+        curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"
         printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
         openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
         if [ -f $TEMP_PEM ]; then
@@ -57,11 +57,11 @@ if ! [ -z "${TRIMMED_STATUS}" ]; then
         fi
         
     else 
-        echo "certificate not expiring soon"
+        echo "Certificate not expiring soon"
         exit 1
     fi
 else
-    echo "ocsp failed - probably invalid paths or revoked certificate" #can update this to reflect all of openssl ocsp errors
+    echo "OCSP failed - probably invalid paths or revoked certificate" #can update this to reflect all of openssl ocsp errors
     exit 1
 fi
 
