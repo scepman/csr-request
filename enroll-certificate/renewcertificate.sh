@@ -3,7 +3,7 @@
 # $1 = SCEPman instance URL
 # $2 = certificate
 # $3 = key 
-# $4 = root certificate (pem encoded)
+# $4 = root certificate (PEM encoded)
 # $5 = csr config file
 # $6 = renewal threshold: 
 
@@ -26,7 +26,6 @@ TEMP_PEM="$TEMP/tmp.pem"
 SECONDS_IN_DAY="84600"
 RENEWAL_THRESHOLD_DAYS="$6" # Can be changed - number of days before expiry that a certificate will be renewed
 RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
-
 
 trap "rm -r $TEMP" EXIT
 

@@ -1,8 +1,8 @@
-# SCEPman certificate renewal and enrolment scripts (beta)
+# SCEPman certificate renewal and enrollment scripts (beta)
 
-Bash scripts enabling renewal and enrolment of certificates on linux machines using SCEPman.
+Bash scripts enabling renewal and enrollment of certificates on linux machines using SCEPman.
 
-## Enrolment script
+## Enrollment script
 
 Enrolls a certificate using SCEPman's csr client, and sets up cronjobs to renew certificates.
 
@@ -12,28 +12,22 @@ NOTE: This script is not currently configured properly to be used in production 
 for testing it would probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to allow for renewals. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
 
 Before running you must:
-- Set the following application settings 
-    - AppConfig:DbCSRValidation:Enabled = true
-- Create a special app registration (parameter 3 - see below for more information)
+- Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
 
 Parameters:
 1. SCEPman app service URL
 2. API scope of SCEPman-api app registration
-3. Client ID of special app registration
+3. Client ID of the app registration created above
 4. Tenant ID (of the tenant hosting SCEPman)
 5. Desired name of certificate
 6. Directory where certifcate will be installed
 7. Directory where key will be installed
 8. Root certificate
 
-Example:
+Example command:
 ```
 sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid 123-clientid-123  2323-tenantid-233 cert-name cert-directory key-directory root.pem
 ```
-
-How to create the special app registration:
-Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
-
 
 ## Renewal script
 
@@ -41,9 +35,10 @@ Renews certificates using mTLS if they will expire within the threshold number o
 
 Before running you must:
 - Set the following application settings 
+    - AppConfig:DbCSRValidation:Enabled = true
     - AppConfig:DbCSRValidation:AllowRenewals = true
     - AppConfig:DbCSRValidation:ReenrollmentAllowedCertificateTypes = Static
-
+    
 Parameters:
 1. SCEPman instance URL
 2. Certificate to be renewed

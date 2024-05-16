@@ -49,11 +49,10 @@ eval "$dotnetcommand CsrClient.dll csr $APPSERVICE_URL $2 $3 interactive $4"
 # Install client certificates in correct locations and convert to pkcs12 format
 openssl pkcs12 -in "my-certificate.pfx" -nokeys -out "$ABS_CERDIR/$CERTNAME.pem"
 openssl pkcs12 -in "my-certificate.pfx" -nodes -nocerts -out "$ABS_KEYDIR/$CERTNAME.key" 
+rm "my-certificate.pfx"
 
 # Create cronjob for mTLS renewal of certificates using renewcertificate.sh script.
-# How often should the cronjob go? Should it depnd on when the certificate is meant to expire? Or just 
-# every day or some fixed interval
 
 # TODO storing renewal script in a different place
-(crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" ) | crontab -
-(crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" ) | crontab -
+(crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "\"$ABS_SCRIPTDIR/openssl-conf.config\"" "10") | crontab -
+(crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "\"$ABS_SCRIPTDIR/openssl-conf.config\"" "10") | crontab -
