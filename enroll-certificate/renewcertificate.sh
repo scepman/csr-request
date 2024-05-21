@@ -23,7 +23,7 @@ TEMP_KEY="$TEMP/tmp.key"
 TEMP_P7B="$TEMP/tmp.p7b"
 TEMP_PEM="$TEMP/tmp.pem"
 
-SECONDS_IN_DAY="84600"
+SECONDS_IN_DAY="86400"
 RENEWAL_THRESHOLD_DAYS="$6" # Can be changed - number of days before expiry that a certificate will be renewed
 RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
