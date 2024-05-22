@@ -14,7 +14,7 @@ NOTE: This script is not currently configured properly to be used in production 
 For testing it would (currently) probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to run the renewal script regularly. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
 
 Before running you must:
-- Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
+- Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt to enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
 
 Parameters:
 1. SCEPman app service URL
