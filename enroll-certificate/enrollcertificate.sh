@@ -15,7 +15,6 @@ CERTNAME="$5"
 ABS_CERDIR=$(readlink -f "$6")
 ABS_KEYDIR=$(readlink -f "$7")
 ABS_ROOT=$(readlink -f "$8")
-ABS_SCRIPTDIR=$(readlink -f ".")
 
 # Example use:
 # sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid 123-clientid-123  2323-tenantid-233 cert-name cert-directory key-directory root.pem
@@ -53,6 +52,11 @@ rm "my-certificate.pfx"
 
 # Create cronjob for mTLS renewal of certificates using renewcertificate.sh script.
 
-# TODO storing renewal script in a different place
+ABS_SCRIPTDIR="$HOME/.local/bin/cron/renewcertificate"
+mkdir -p "$ABS_SCRIPTDIR"
+cd ..
+cp renewcertificate.sh "$ABS_SCRIPTDIR/renewcertificate.sh" 
+cp openssl-conf.config "$ABS_SCRIPTDIR/openssl-conf.config"
+
 (crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "\"$ABS_SCRIPTDIR/openssl-conf.config\"" "10") | crontab -
 (crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "\"$ABS_SCRIPTDIR/openssl-conf.config\"" "10") | crontab -
