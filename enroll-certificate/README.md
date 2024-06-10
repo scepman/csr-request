@@ -8,9 +8,9 @@ Enrolls a certificate using SCEPman's CSR client, and sets up cronjobs to renew 
 
 NOTE: This script is not currently configured properly to be used in production for the following reasons:
 1. There is not currently a role in SCEPman that allows users to enroll certificates to only themselves - users can either enroll any kind of certificate they wish or cannot enroll certificates at all. The engineering team is aware of this.
-2. Generated keys are not encrypted
+2. Generated RSA keys are not encrypted (unclear if there is a reasonable way to go about this)
 
-For testing it would (currently) probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to run the renewal script regularly. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
+For testing, it would (currently) probably be more straightforward to enroll a certificate from SCEPman Certificate Master and configure your own cronjob to run the renewal script regularly. Feel free to use this script as inspiration for what those cronjobs might look like. You may also want to look at using anacron as a possibility.
 
 Before running you must:
 - Create a new app registration in Azure portal. In Authentication, you'll have to add a "Mobile and desktop application" as a platform. This allows you to log on to Entra interactively as the application (when you attempt to enroll the certificate, a browser window will open asking you to authenticate). You will also have to go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
@@ -47,10 +47,9 @@ Parameters:
 2. Certificate to be renewed
 3. Private key of certificate to be renewed
 4. Root certificate
-5. CSR config file
-6. Renewal threshold: certificate will only renew if expiring in this (or less) many days
+5. Renewal threshold: certificate will only renew if expiring in this (or less) many days
 
 Example command:
 ```
-sh renewcertificate.sh https://your-scepman-domain.net/ cert.pem cert.key root.pem openssl-conf.config 10
+sh renewcertificate.sh https://your-scepman-domain.net/ cert.pem cert.key root.pem 10
 ```

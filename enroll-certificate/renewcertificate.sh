@@ -4,8 +4,7 @@
 # $2 = certificate
 # $3 = key 
 # $4 = root certificate (PEM encoded)
-# $5 = csr config file
-# $6 = renewal threshold: 
+# $5 = renewal threshold: 
 
 # Example command: 
 # sh renewcertificate.sh https://your-scepman-domain.net/ cert.pem cert.key root.pem openssl-conf.config 10
@@ -15,7 +14,6 @@ APPSERVICE_URL="$1"
 ABS_CER=`readlink -f "$2"`
 ABS_KEY=`readlink -f "$3"`
 ABS_ROOT=`readlink -f "$4"`
-ABS_CONF=`readlink -f "$5"`
 
 TEMP=$(mktemp -d tmpXXXXXXX)
 TEMP_CSR="$TEMP/tmp.csr"
@@ -37,9 +35,9 @@ if ! [ -z "${TRIMMED_STATUS}" ]; then
         # Certificate will expire within 10 days, renew using mTLS. 
         
         # Create a CSR
-        openssl genrsa -out "$TEMP_KEY" 4096
+        openssl genrsa -out "$TEMP_KEY"  4096
         # I don't think the config is important apart from maybe the challenge password? ATM included in package.
-        openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -config "$ABS_CONF"
+        openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "/C=US/ST=State/L=Locality/O=Contoso/OU=Unit/CN=Contoso/emailAddress=email@contoso.com"
         # Create renewed version of certificate.
         echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
         curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"
@@ -51,7 +49,6 @@ if ! [ -z "${TRIMMED_STATUS}" ]; then
             cp "$TEMP_PEM" "$ABS_CER"
         else
             echo "Renewal endpoint returned an error"
-            cat $TEMP/err 
             exit 1
         fi
         
