@@ -35,7 +35,9 @@ sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123
 
 This script allows for the renewal of SCEPman-issued certificates using mTLS if they will expire within a threshold number of days. If this script were to be run regularly using Linux's Cron or Anacron utilities, it could allow for the automatic renewal of certificates on Linux devices.
 
-NOTE: This script also does not encrypt the generated keys (this requires passphrase input)
+Considerations: 
+- This script does not encrypt the generated keys (this requires passphrase input, so has encryption has been omitted to allow for automatic renewal.)
+- If you are renewing passphrase protected certificates from certificate master, you will need to input this passphrase in order to renew them.
 
 Before running you must:
 - Set the following application settings on the SCEPman app service.
@@ -43,11 +45,11 @@ Before running you must:
     - AppConfig:DbCSRValidation:AllowRenewals = true
     - AppConfig:DbCSRValidation:ReenrollmentAllowedCertificateTypes = Static
     
-Parameters:
+Parametetrs for the command:
 1. SCEPman instance URL
-2. Certificate to be renewed (file name)
-3. Private key of certificate to be renewed (file name)
-4. Root certificate (file name)
+2. Certificate to be renewed (name of PEM encoded certificate file)
+3. Private key of certificate to be renewed (name of PEM encoded key file)
+4. Root certificate (name of PEM encoded certificate file)
 5. Renewal threshold (# of days): certificate will only renew if expiring in this (or less) many days
 
 Example command:

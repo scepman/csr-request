@@ -35,8 +35,8 @@ if ! [ -z "${TRIMMED_STATUS}" ]; then
         # Certificate will expire within 10 days, renew using mTLS. 
         
         # Create a CSR
-        openssl genrsa -out "$TEMP_KEY"  4096
-        # I don't think the config is important apart from maybe the challenge password? ATM included in package.
+        openssl genrsa -out "$TEMP_KEY" 4096
+        # Unsure if challenge password is necessary for CSR.
         openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "/C=US/ST=State/L=Locality/O=Contoso/OU=Unit/CN=Contoso/emailAddress=email@contoso.com"
         # Create renewed version of certificate.
         echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
