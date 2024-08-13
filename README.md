@@ -44,6 +44,16 @@ Usage: `CsrClient SCEPMAN_BASE_URL SCEPMAN_API_SCOPE CLIENT_ID secret:{CLIENT_SE
 
 This option is similar to the previous one, but uses a client secret instead of a certificate. The client secret must be created in the "Certificates & secrets" section of your app registration.
 
+### 4. Interactive authentication
+
+Usage: `CsrClient SCEPMAN_BASE_URL SCEPMAN_API_SCOPE CLIENT_ID interactive TENANT_ID`
+
+This option will open a browser window for interactive Entra ID authentication. Before you can use this, you must do the following preparation:
+- Create a new app registration in Azure portal. In Authentication, add a "Mobile and desktop application" as a platform.
+- Go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
+
+For this case, CLIENT_ID refers to the newly created app registration.
+
 ## License
 
 All code is available under the terms of the [MIT License](LICENSE).
