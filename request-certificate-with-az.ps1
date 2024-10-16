@@ -1,5 +1,5 @@
 <# 
-request-certificate-with-az.ps1 Version: 20230216
+request-certificate-with-az.ps1 Version: 20231101
 C. Hannebauer - glueckkanja-gab
 
   .DESCRIPTION
@@ -19,8 +19,11 @@ C. Hannebauer - glueckkanja-gab
   .PARAMETER Password
     The password for the PFX file that will be created
 
+  .PARAMETER LegacyCryptography
+    Use legacy cryptography (3DES) for the PFX file. This is required for MacOS at least until version 14 and Windows Server version 2016 and older.
+
   .EXAMPLE
-    .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -CertificateSubject "CN=MyCert" -Password "password"
+    .\request-certificate-with-az.ps1 -ScepmanUrl https://your-scepman.azurewebsites.net -ScepmanApiScope api://80f570a1-becd-44f5-896f-03ddf4262fde -CertificateSubject "CN=MyCert" -Password "password"
 
   .NOTES
     Available under the MIT license. See LICENSE file for details.
@@ -36,7 +39,8 @@ param (
     [Parameter(Mandatory=$true)][string]$ScepmanUrl,
     [Parameter(Mandatory=$true)][string]$ScepmanApiScope,
     [string]$certificateSubject = "CN=MyCert",
-    [string]$password = "password"
+    [string]$password = "password",
+    [switch]$LegacyCryptography
 )
 
 # Create a new RSA key pair and certificate request using .NET
@@ -45,25 +49,50 @@ $csr = new-object System.Security.Cryptography.X509Certificates.CertificateReque
   $certificateSubject, $rsakey, 
   [System.Security.Cryptography.HashAlgorithmName]::SHA256, 
   [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+
+# Add the EKU extension to the CSR, as an example for adding an extension
+$ekuOidCollection = new-object System.Security.Cryptography.OidCollection
+$oidServerAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1") # Server Authentication
+$null = $ekuOidCollection.Add($oidServerAuth)
+$oidClientAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.2") # Client Authentication
+$null = $ekuOidCollection.Add($oidClientAuth)
+$extEku = new-object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($ekuOidCollection, $false)
+
+$csr.CertificateExtensions.Add($extEku)
+
 $binCsr = $csr.CreateSigningRequest()
-[System.IO.File]::WriteAllBytes("mycert.csr", $binCsr)
+$csrPath = Join-Path (Get-Location) "mycert.csr"
+[System.IO.File]::WriteAllBytes($csrPath, $binCsr)
 
 # Submit the CSR to the SCEPman REST API using az, which handles authentication
 $null = az rest --method POST --uri "$ScepmanUrl/api/csr" --body '@mycert.csr' --headers "Content-Type=application/octet-stream" --output-file mycert.cer --resource $ScepmanApiScope
 
 # Extract the certificate from the response, merge it with the RSA key, and save as Pkcs12
-$certificate = new-object System.Security.Cryptography.X509Certificates.X509Certificate2("mycert.cer")
+$certPath = Join-Path (Get-Location) "mycert.cer"
+$certificate = new-object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath)
 $pkcs12 = new-object System.Security.Cryptography.Pkcs.Pkcs12Builder
 $pkcs12CertContent = new-object System.Security.Cryptography.Pkcs.Pkcs12SafeContents
 $null = $pkcs12CertContent.AddCertificate($certificate)
-$passwordParameters = new-object System.Security.Cryptography.PbeParameters(
-  [System.Security.Cryptography.PbeEncryptionAlgorithm]::Aes256Cbc,
-  [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-  1000)
+if ($LegacyCryptography.IsPresent) {
+  $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
+    [System.Security.Cryptography.PbeEncryptionAlgorithm]::TripleDes3KeyPkcs12,
+    [System.Security.Cryptography.HashAlgorithmName]::SHA1,
+    2000)
+} else {
+  $passwordParameters = new-object System.Security.Cryptography.PbeParameters(
+    [System.Security.Cryptography.PbeEncryptionAlgorithm]::Aes256Cbc,
+    [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+    1000)
+}
 $null = $pkcs12CertContent.AddShroudedKey($rsakey, $password, $passwordParameters)
 $null = $pkcs12.AddSafeContentsUnencrypted($pkcs12CertContent)
-$pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA256, 1000)
+if ($LegacyCryptography.IsPresent) {
+  $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA1, 2000)
+} else {
+  $pkcs12.SealWithMac($password, [System.Security.Cryptography.HashAlgorithmName]::SHA256, 1000)
+}
 $baPfx = $pkcs12.Encode()
 
 # Save the Pkcs12 to disk
-[System.IO.File]::WriteAllBytes("mycert.pfx", $baPfx)
+$pfxPath = Join-Path (Get-Location) "mycert.pfx"
+[System.IO.File]::WriteAllBytes($pfxPath, $baPfx)

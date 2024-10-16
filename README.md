@@ -8,6 +8,8 @@ Submissions are welcome!
 
 The PowerShell script [request-certificate-with-az.ps1](request-certificate-with-az.ps1) uses PowerShell to generate an RSA key, az to submit it to SCEPman's CSR endpoint with AAD authentication, and again .NET Core to merge the issued certificate with the RSA private key to a PFX file.
 
+Therefore, you must install PowerShell Core and [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) on your machine.
+
 You need to call az login before running the script, so az can authenticate to the CSR endpoint.
 
 ## C# on .NET 7
@@ -41,6 +43,16 @@ Afterwards, export the public part of the certificate and add it to your app reg
 Usage: `CsrClient SCEPMAN_BASE_URL SCEPMAN_API_SCOPE CLIENT_ID secret:{CLIENT_SECRET} TENANT_ID`
 
 This option is similar to the previous one, but uses a client secret instead of a certificate. The client secret must be created in the "Certificates & secrets" section of your app registration.
+
+### 4. Interactive authentication
+
+Usage: `CsrClient SCEPMAN_BASE_URL SCEPMAN_API_SCOPE CLIENT_ID interactive TENANT_ID`
+
+This option will open a browser window for interactive Entra ID authentication. Before you can use this, you must do the following preparation:
+- Create a new app registration in Azure portal. In Authentication, add a "Mobile and desktop application" as a platform.
+- Go to the app registration SCEPman-api and visit "Expose an API". Under "Authorized client applications", you must add the client ID of the app registration just created.
+
+For this case, CLIENT_ID refers to the newly created app registration.
 
 ## License
 

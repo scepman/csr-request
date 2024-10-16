@@ -11,7 +11,7 @@ Command command = Enum.Parse<Command>(args[0], true);
 string scepmanBaseUrl = args[1];    // Example: https://scepman.example.com
 
 AccessToken accessToken;
-X509Certificate2 clientAuthenticationCertificate = null;
+X509Certificate2? clientAuthenticationCertificate = null;
 if (command == Command.csr || command == Command.est)
 {
     string scepmanApiScope = args[2];   // Example: api://14a287e1-2ccd-4633-8747-4e97c002d06d  (Look up the correct GUID from your app registration scepman-api)
@@ -52,7 +52,11 @@ if (command == Command.csr || command == Command.est)
         }
     }
     else
-        throw new NotSupportedException();
+    {
+        DefaultAzureCredential accessCredential = new(); // Tries all kinds of available credentials, see https://docs.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet
+        accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
+    }
+
 }
 else if (command == Command.reenroll)
 {
@@ -69,6 +73,9 @@ CertificateRequest request = new(
     key,
     HashAlgorithmName.SHA256
 );
+OidCollection ekus = new();
+ekus.Add(new Oid("1.3.6.1.5.5.7.3.2"));  // Client Authentication
+request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(ekus, true));
 byte[] baCsr = request.CreateSigningRequest();
 
 
