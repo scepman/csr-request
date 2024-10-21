@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Arguments:
+# -d or -u depending on whether it is a device or user cerificate to be enrolled
 # $1 = SCEPman app service URL
 # $2 = API scope of SCEPman-api app registration
 # $3 = Desired name of certificate
@@ -11,6 +12,27 @@
 
 # Example use:
 # sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid cert-name cert-directory key-directory root.pem
+
+# Default certificate type
+CERT_TYPE="user"
+
+# Parse command-line options
+while getopts ":u:d:" opt; do
+  case ${opt} in
+    u )
+      CERT_TYPE="user"
+      ;;
+    d )
+      CERT_TYPE="device"
+      ;;
+    \? )
+      echo "Usage: -u for user certificate, -d for device certificate" 1>&2
+      exit 1
+      ;;
+  esac
+done
+shift 1
+echo $CERT_TYPE
 
 APPSERVICE_URL="$1"
 API_SCOPE="$2"
@@ -29,10 +51,23 @@ TEMP_PEM="cert.pem"
 
 trap "rm -r $TEMP" EXIT
 
+if [[ $CERT_TYPE == "user" ]];
+then
+    USER_OBJECT=$(az ad signed-in-user show)
+    UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
+    SUBJECT="/CN=$UPN"
+    EXTENSIONS="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
+else
+    echo "DEVICE CERTIFICATE NOT YET IMPLEMENTED"
+    DEVICE_ID=$(az rest --method get --uri "https://graph.microsoft.com/v1.0/me/managedDevices" --query "value[0].id" -o tsv)
+    SUBJECT="/CN=$DEVICE_ID"
+    EXTENSIONS="subjectAltName=URI:IntuneDeviceId://{whatever the device ID is, not yet implemented}"
+fi
+
 # Create a CSR
 openssl genrsa -out "$TEMP_KEY" 4096
 # Unsure if challenge password is necessary for CSR.
-openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "/CN=vm-win11-3" -config "openssl-usercert-clientauth-example.config"
+openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSIONS"
 
 az login --scope "$API_SCOPE/.default" --allow-no-subscriptions
 KV_TOKEN=$(az account get-access-token --scope "$API_SCOPE/.default" --query accessToken --output tsv)
