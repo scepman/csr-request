@@ -45,16 +45,16 @@ ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
 ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
 
 SECONDS_IN_DAY="86400"
-if [[ -z "$RENEWAL_THRESHOLD_DAY" ]]; then
+if [[ -z "$RENEWAL_THRESHOLD_DAYS" ]]; then
     RENEWAL_THRESHOLD_DAYS="30"
 fi
 RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
 TEMP=$(mktemp -d tmpXXXXXXX)
-TEMP_CSR="csr.req"
-TEMP_KEY="key.pem"
-TEMP_P7B="file.p7b"
-TEMP_PEM="cert.pem"
+TEMP_CSR="$TEMP/tmp.csr"
+TEMP_KEY="$TEMP/tmp.key"
+TEMP_P7B="$TEMP/tmp.p7b"
+TEMP_PEM="$TEMP/tmp.pem"
 
 trap "rm -r $TEMP" EXIT
 
@@ -76,6 +76,7 @@ if [[ -e "$ABS_CER" ]]; then
     fi
     SUBJECT="/CN=Contoso"
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
+    EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 else
     echo "Cert does not exist in file: enacting enrollment protocol"
     if [[ $CERT_TYPE == "user" ]];
@@ -84,7 +85,7 @@ else
         UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
         SUBJECT="/CN=$UPN"
         EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
-        EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
+
     else
         echo "DEVICE CERTIFICATE NOT YET IMPLEMENTED"
         DEVICE_ID=$(az rest --method get --uri "https://graph.microsoft.com/v1.0/me/managedDevices" --query "value[0].id" -o tsv)
@@ -98,6 +99,8 @@ else
 
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
 fi
+
+EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
 
 # Create a CSR
 openssl genrsa -out "$TEMP_KEY" 4096
