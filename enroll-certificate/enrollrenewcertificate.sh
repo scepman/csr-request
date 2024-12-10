@@ -45,12 +45,24 @@ RENEWAL_THRESHOLD_DAYS="$7"
 # Define the log file
 LOG_FILE="$HOME/enrollrenewcertificate.log"
 
-# Function to log debug messages
+# Logging functions
 log_debug() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] $1" >> "$LOG_FILE"
+    # logger -t enrollrenewcertificate.sh -p user.debug "$1"
 }
 
-log_debug "Starting the script"
+log_info() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $1" >> "$LOG_FILE"
+    # logger -t enrollrenewcertificate.sh -p user.info "$1"
+}
+
+log_error() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] $1" >> "$LOG_FILE"
+    # logger -t enrollrenewcertificate.sh -p user.err "$1"
+}
+
+
+log_debug "Starting the certificate enrollment/renewal script"
 
 ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
 ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
@@ -83,23 +95,23 @@ log_debug "Temporary directory created: $TEMP"
 trap "rm -r $TEMP" EXIT
 
 if [[ -e "$ABS_CER" ]]; then
-    log_debug "Cert already exists in file: enacting renewal protocol"
+    log_info "Cert already exists in file $ABC_CER: enacting renewal protocol"
     OCSP_STATUS=$(openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CER" -url "$APPSERVICE_URL/ocsp")
     TRIMMED_STATUS=$(echo "$OCSP_STATUS" | grep "good")
     log_debug "OCSP_STATUS: $OCSP_STATUS"
     log_debug "TRIMMED_STATUS: $TRIMMED_STATUS"
     if [[ ! -e "$ABS_KEY" ]]; then
-        log_debug "The certificate exists but no private key can be found, exiting"
+        log_error "The certificate exists but no private key can be found, exiting"
         echo "The certificate exists but no private key can be found, exiting"
         exit 1
     fi
     if [ -z "${TRIMMED_STATUS}" ]; then
-        log_debug "OCSP failed - probably invalid paths or revoked certificate, exiting"
+        log_error "OCSP failed - probably invalid paths or revoked certificate, exiting"
         echo "OCSP failed - probably invalid paths or revoked certificate, exiting" #can update this to reflect all of openssl ocsp errors
         exit 1
     fi
     if openssl x509 -checkend $RENEWAL_THRESHOLD -noout -in "$ABS_CER"; then
-        log_debug "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
+        log_info "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
         echo "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
         exit 1
     fi
@@ -107,26 +119,40 @@ if [[ -e "$ABS_CER" ]]; then
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 else
-    log_debug "Cert does not exist in file: enacting enrollment protocol"
+    log_info "Cert does not exist in file $ABC_CER: enacting enrollment protocol"
     if [[ $CERT_TYPE == "user" ]]; then
         log_debug "CERT_TYPE is user"
         USER_OBJECT=$(az ad signed-in-user show)
         UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
         log_debug "USER_OBJECT: $USER_OBJECT"
         log_debug "UPN: $UPN"
+        if [[ -z "$UPN" ]]; then
+            log_error "No UPN found, exiting"
+            echo "No UPN found, exiting"
+            exit 1
+        fi
         SUBJECT="/CN=$UPN"
         EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
 
     else
+        log_debug "CERT_TYPE is device"
         echo "DEVICE CERTIFICATE NOT YET IMPLEMENTED"
+        log_error "Device certificate not yet implemented, exiting"
         DEVICE_ID=$(az rest --method get --uri "https://graph.microsoft.com/v1.0/me/managedDevices" --query "value[0].id" -o tsv)
         SUBJECT="/CN=$DEVICE_ID"
         EXTENSION1="subjectAltName=URI:IntuneDeviceId://{whatever the device ID is, not yet implemented}"
+        exit 1
     fi
 
     az login --scope "$API_SCOPE/.default" --allow-no-subscriptions
     KV_TOKEN=$(az account get-access-token --scope "$API_SCOPE/.default" --query accessToken --output tsv)
     KV_TOKEN=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
+
+    if [[ -z "$KV_TOKEN" ]]; then
+        log_error "No token could be acquired, exiting"
+        echo "No token could be acquired, exiting"
+        exit 1
+    fi
 
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
 fi
@@ -151,8 +177,9 @@ if [ -f $TEMP_PEM ]; then
     # only execute if new pem file created:
     cp "$TEMP_KEY" "$ABS_KEY"
     cp "$TEMP_PEM" "$ABS_CER"
+    log_info "Certificate successfully enrolled/renewed"
 else
-    log_debug "API endpoint returned an error"
+    log_error "API endpoint returned an error"
     echo "API endpoint returned an error"
     exit 1
 fi
