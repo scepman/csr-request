@@ -41,8 +41,28 @@ ABS_CERDIR=$(readlink -f "$4")
 ABS_KEYDIR=$(readlink -f "$5")
 ABS_ROOT=$(readlink -f "$6")
 RENEWAL_THRESHOLD_DAYS="$7"
+
+# Define the log file
+LOG_FILE="$HOME/enrollrenewcertificate.log"
+
+# Function to log debug messages
+log_debug() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] $1" >> "$LOG_FILE"
+}
+
+log_debug "Starting the script"
+
 ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
 ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
+
+log_debug "APPSERVICE_URL: $APPSERVICE_URL"
+log_debug "API_SCOPE: $API_SCOPE"
+log_debug "CERTNAME: $CERTNAME"
+log_debug "ABS_CERDIR: $ABS_CERDIR"
+log_debug "ABS_KEYDIR: $ABS_KEYDIR"
+log_debug "RENEWAL_THRESHOLD_DAYS: $RENEWAL_THRESHOLD_DAYS"
+log_debug "ABS_KEY: $ABS_KEY"
+log_debug "ABS_CER: $ABS_CER"
 
 SECONDS_IN_DAY="86400"
 if [[ -z "$RENEWAL_THRESHOLD_DAYS" ]]; then
@@ -50,39 +70,50 @@ if [[ -z "$RENEWAL_THRESHOLD_DAYS" ]]; then
 fi
 RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
+log_debug "RENEWAL_THRESHOLD: $RENEWAL_THRESHOLD"
+
 TEMP=$(mktemp -d tmpXXXXXXX)
 TEMP_CSR="$TEMP/tmp.csr"
 TEMP_KEY="$TEMP/tmp.key"
 TEMP_P7B="$TEMP/tmp.p7b"
 TEMP_PEM="$TEMP/tmp.pem"
 
+log_debug "Temporary directory created: $TEMP"
+
 trap "rm -r $TEMP" EXIT
 
 if [[ -e "$ABS_CER" ]]; then
-    echo "Cert already exists in file: enacting renewal protocol"
-    OCSP_STATUS=`openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CER" -url "$APPSERVICE_URL/ocsp"`
-    TRIMMED_STATUS=`echo "$OCSP_STATUS" | grep "good"`
+    log_debug "Cert already exists in file: enacting renewal protocol"
+    OCSP_STATUS=$(openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CER" -url "$APPSERVICE_URL/ocsp")
+    TRIMMED_STATUS=$(echo "$OCSP_STATUS" | grep "good")
+    log_debug "OCSP_STATUS: $OCSP_STATUS"
+    log_debug "TRIMMED_STATUS: $TRIMMED_STATUS"
     if [[ ! -e "$ABS_KEY" ]]; then
+        log_debug "The certificate exists but no private key can be found, exiting"
         echo "The certificate exists but no private key can be found, exiting"
         exit 1
     fi
     if [ -z "${TRIMMED_STATUS}" ]; then
+        log_debug "OCSP failed - probably invalid paths or revoked certificate, exiting"
         echo "OCSP failed - probably invalid paths or revoked certificate, exiting" #can update this to reflect all of openssl ocsp errors
         exit 1
     fi
     if openssl x509 -checkend $RENEWAL_THRESHOLD -noout -in "$ABS_CER"; then
+        log_debug "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
         echo "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
         exit 1
     fi
     SUBJECT="/CN=Contoso"
-    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
+    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 else
-    echo "Cert does not exist in file: enacting enrollment protocol"
-    if [[ $CERT_TYPE == "user" ]];
-    then
+    log_debug "Cert does not exist in file: enacting enrollment protocol"
+    if [[ $CERT_TYPE == "user" ]]; then
+        log_debug "CERT_TYPE is user"
         USER_OBJECT=$(az ad signed-in-user show)
         UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
+        log_debug "USER_OBJECT: $USER_OBJECT"
+        log_debug "UPN: $UPN"
         SUBJECT="/CN=$UPN"
         EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
 
@@ -97,25 +128,31 @@ else
     KV_TOKEN=$(az account get-access-token --scope "$API_SCOPE/.default" --query accessToken --output tsv)
     KV_TOKEN=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
 
-    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
+    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
 fi
 
 EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
 
 # Create a CSR
+log_debug "Generating RSA key"
 openssl genrsa -out "$TEMP_KEY" 4096
+log_debug "Generating CSR"
 openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
 
 # Create certificate
+log_debug "Creating certificate"
 echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
 eval $CURL_CMD >> "$TEMP_P7B"
 printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
+log_debug "Converting PKCS7 to PEM"
 openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
 if [ -f $TEMP_PEM ]; then
+    log_debug "New PEM file created, copying key and certificate"
     # only execute if new pem file created:
     cp "$TEMP_KEY" "$ABS_KEY"
     cp "$TEMP_PEM" "$ABS_CER"
 else
+    log_debug "API endpoint returned an error"
     echo "API endpoint returned an error"
     exit 1
 fi
