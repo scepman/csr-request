@@ -120,6 +120,15 @@ if [[ -e "$ABS_CER" ]]; then
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 else
     log_info "Cert does not exist in file $ABC_CER: enacting enrollment protocol"
+
+    if ! command -v az &> /dev/null; then
+        log_error "Azure CLI (az) is not installed. Please install it and try again."
+        echo "Azure CLI (az) is not installed. Please install it and try again."
+        exit 1
+    else
+        log_debug "Azure CLI (az) is installed."
+    fi
+
     if [[ $CERT_TYPE == "user" ]]; then
         log_debug "CERT_TYPE is user"
         USER_OBJECT=$(az ad signed-in-user show)
