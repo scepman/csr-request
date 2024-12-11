@@ -45,15 +45,22 @@ RENEWAL_THRESHOLD_DAYS="$7"
 # Define the log file
 LOG_FILE="$HOME/enrollrenewcertificate.log"
 
+# Define the log level (DEBUG, INFO, ERROR), defaulting to INFO
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
 # Logging functions
 log_debug() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] $1" >> "$LOG_FILE"
-    # logger -t enrollrenewcertificate.sh -p user.debug "$1"
+    if [[ "$LOG_LEVEL" == "DEBUG" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] $1" >> "$LOG_FILE"
+        # logger -t enrollrenewcertificate.sh -p user.debug "$1"
+    fi
 }
 
 log_info() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $1" >> "$LOG_FILE"
-    # logger -t enrollrenewcertificate.sh -p user.info "$1"
+    if [[ "$LOG_LEVEL" == "DEBUG" || "$LOG_LEVEL" == "INFO" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $1" >> "$LOG_FILE"
+        # logger -t enrollrenewcertificate.sh -p user.info "$1"
+    fi
 }
 
 log_error() {
@@ -182,7 +189,7 @@ printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
 log_debug "Converting PKCS7 to PEM"
 openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
 if [ -f $TEMP_PEM ]; then
-    log_debug "New PEM file created, copying key and certificate"
+    log_debug "New PEM file created, copying key and certificate to $ABS_KEY and $ABS_CER, respectively"
     # only execute if new pem file created:
     cp "$TEMP_KEY" "$ABS_KEY"
     cp "$TEMP_PEM" "$ABS_CER"
