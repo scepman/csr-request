@@ -11,7 +11,7 @@ Command command = Enum.Parse<Command>(args[0], true);
 string scepmanBaseUrl = args[1];    // Example: https://scepman.example.com
 
 AccessToken accessToken;
-X509Certificate2 clientAuthenticationCertificate = null;
+X509Certificate2? clientAuthenticationCertificate = null;
 if (command == Command.csr || command == Command.est)
 {
     string scepmanApiScope = args[2];   // Example: api://14a287e1-2ccd-4633-8747-4e97c002d06d  (Look up the correct GUID from your app registration scepman-api)
@@ -35,6 +35,16 @@ if (command == Command.csr || command == Command.est)
 
             ClientCertificateCredential accessCredential = new(tenantId, clientId, clientAuthenticationCertificate);
             accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }));
+        }
+        else if (authenticationMethod == "interactive")
+        {
+            InteractiveBrowserCredentialOptions options = new()
+            {
+                ClientId = clientId,
+                TenantId = tenantId,
+            };
+            InteractiveBrowserCredential accessCredential = new(options);
+            accessToken = await accessCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{scepmanApiScope}/.default" }, tenantId: tenantId));
         }
         else
         {
