@@ -34,6 +34,10 @@ C. Hannebauer - glueckkanja-gab
     This alternative allows users to request certificates.
 
 #>
+
+#Requires -Version 7.0
+# This is because of Pkcs12Builder, which is not available in Windows PowerShell
+
 [CmdletBinding()]
 param (
     [Parameter(Mandatory=$true)][string]$ScepmanUrl,
