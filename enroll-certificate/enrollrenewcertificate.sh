@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Version: 2024-12-16
+
 # Arguments:
 # -d or -u depending on whether it is a device or user cerificate to be enrolled
 # $1 = SCEPman app service URL
