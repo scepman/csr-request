@@ -1,61 +1,95 @@
 #!/bin/bash
 
 # Arguments:
+# -d or -u depending on whether it is a device or user cerificate to be enrolled
 # $1 = SCEPman app service URL
 # $2 = API scope of SCEPman-api app registration
-# $3 = Client ID of special app registration (e.g. Linux-SCEPman-Client app reg)
-# $4 = Tenant ID
-# $5 = Desired name of certificate
-# $6 = Directory where cert is to be installed
-# $7 = Directory where key is to be installed
-# $8 = Root certificate
-
-APPSERVICE_URL="$1"
-CERTNAME="$5"
-ABS_CERDIR=$(readlink -f "$6")
-ABS_KEYDIR=$(readlink -f "$7")
-ABS_ROOT=$(readlink -f "$8")
+# $3 = Desired name of certificate
+# $4 = Directory where cert is to be installed
+# $5 = Directory where key is to be installed
+# $6 = Root certificate
+# $7 = Device or User cert (not yet implemented)
 
 # Example use:
-# sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid 123-clientid-123  2323-tenantid-233 cert-name cert-directory key-directory root.pem
+# sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid cert-name cert-directory key-directory root.pem
 
-echo Running in $SHELL
+# Default certificate type
+CERT_TYPE="user"
 
-# Install dotnet core if it is not installed
-dotnetcommand="dotnet"
-# if ! [ -x "$(command -v dotnet)" ]; then
-  if [ ! -e "$HOME/.dotnet/dotnet" ]; then
-    wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-    chmod +x ./dotnet-install.sh
-    ./dotnet-install.sh --version latest --channel 7.0
-  fi
-  dotnetcommand="$HOME/.dotnet/dotnet"
-# fi
+# Parse command-line options
+while getopts ":u:d:" opt; do
+  case ${opt} in
+    u )
+      CERT_TYPE="user"
+      ;;
+    d )
+      CERT_TYPE="device"
+      ;;
+    \? )
+      echo "Usage: -u for user certificate, -d for device certificate" 1>&2
+      exit 1
+      ;;
+  esac
+done
+shift 1
+echo $CERT_TYPE
 
-# Download CsrClient
-if [ ! -e "$HOME/enroll-certificate.tgz" ]; then
-  mkdir csrclient
-  wget https://github.com/scepman/csr-request/releases/download/alpha-test/enroll-certificate.tgz -O csrclient/enroll-certificate.tgz
-  cd csrclient
-  tar -xvzf enroll-certificate.tgz
+APPSERVICE_URL="$1"
+API_SCOPE="$2"
+CERTNAME="$3"
+ABS_CERDIR=$(readlink -f "$4")
+ABS_KEYDIR=$(readlink -f "$5")
+ABS_ROOT=$(readlink -f "$6")
+ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
+ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
+
+TEMP=$(mktemp -d tmpXXXXXXX)
+TEMP_CSR="csr.req"
+TEMP_KEY="key.pem"
+TEMP_P7B="file.p7b"
+TEMP_PEM="cert.pem"
+
+trap "rm -r $TEMP" EXIT
+
+if [[ $CERT_TYPE == "user" ]];
+then
+    USER_OBJECT=$(az ad signed-in-user show)
+    UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
+    SUBJECT="/CN=$UPN"
+    EXTENSIONS="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
 else
-  cd csrclient
+    echo "DEVICE CERTIFICATE NOT YET IMPLEMENTED"
+    DEVICE_ID=$(az rest --method get --uri "https://graph.microsoft.com/v1.0/me/managedDevices" --query "value[0].id" -o tsv)
+    SUBJECT="/CN=$DEVICE_ID"
+    EXTENSIONS="subjectAltName=URI:IntuneDeviceId://{whatever the device ID is, not yet implemented}"
 fi
 
-# run CsrClient and enroll a certificate
-eval "$dotnetcommand CsrClient.dll csr $APPSERVICE_URL $2 $3 interactive $4"
+# Create a CSR
+openssl genrsa -out "$TEMP_KEY" 4096
+# Unsure if challenge password is necessary for CSR.
+openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSIONS"
 
-# Install client certificates in correct locations and convert to pkcs12 format
-openssl pkcs12 -in "my-certificate.pfx" -nokeys -passin pass:password -out "$ABS_CERDIR/$CERTNAME.pem"
-openssl pkcs12 -in "my-certificate.pfx" -nodes -nocerts -passin pass:password -out "$ABS_KEYDIR/$CERTNAME.key" 
-rm "my-certificate.pfx"
+az login --scope "$API_SCOPE/.default" --allow-no-subscriptions
+KV_TOKEN=$(az account get-access-token --scope "$API_SCOPE/.default" --query accessToken --output tsv)
+KV_TOKEN=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
 
-# Create cronjob for mTLS renewal of certificates using renewcertificate.sh script.
+# Create certificate
+echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
+curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" --cacert "$ABS_ROOT" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"
+printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
+openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
+if [ -f $TEMP_PEM ]; then
+    # only execute if new pem file created:
+    cp "$TEMP_KEY" "$ABS_KEY"
+    cp "$TEMP_PEM" "$ABS_CER"
+else
+    echo "API endpoint returned an error"
+    exit 1
+fi
 
-ABS_SCRIPTDIR="$HOME/.local/bin/cron/renewcertificate"
-mkdir -p "$ABS_SCRIPTDIR"
-cd ..
-cp renewcertificate.sh "$ABS_SCRIPTDIR/renewcertificate.sh" 
-
-(crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
-(crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
+# ABS_SCRIPTDIR="$HOME/.local/bin/cron/renewcertificate"
+# mkdir -p "$ABS_SCRIPTDIR"
+# cd ..
+# cp renewcertificate.sh "$ABS_SCRIPTDIR/renewcertificate.sh"
+# (crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
+# (crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
