@@ -2,8 +2,14 @@
 
 # Version: 2024-12-16
 
+# Commands (not yet implemented):
+# -u for user certificate with auto-detection whether it is an initial enrollment or renewal
+# -d for device certificate with auto-detection whether it is an initial enrollment or renewal
+# -r for renewal
+# -w for initial enrollment of a user
+# -x for initial enrollment of a device
+
 # Arguments:
-# -d or -u depending on whether it is a device or user cerificate to be enrolled
 # $1 = SCEPman app service URL
 # $2 = API scope of SCEPman-api app registration
 # $3 = Desired name of certificate
