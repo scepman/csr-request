@@ -29,8 +29,8 @@ C. Hannebauer - glueckkanja-gab
     Available under the MIT license. See LICENSE file for details.
 
     You may need to call az login before running this script and log in as a service principal or Managed Identity (https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli?view=azure-cli-latest#sign-in-with-a-service-principal)
-    Alternatively, you may modify the scepman-api app registration to allow users for the App role CSR.Request.Db, and additionally, 
-    add az (04b07795-8ddb-461a-bbee-02f9e1bf7b46) as authorized client application to your Azure AD app registration 'scepman-api'.
+    Alternatively, you may add users to the CSR.SelfService role of the 'SCEPman-api' app registration and additionally
+    add az (04b07795-8ddb-461a-bbee-02f9e1bf7b46) as authorized client application to your Azure AD app registration 'SCEPman-api'.
     This alternative allows users to request certificates.
 
 #>
