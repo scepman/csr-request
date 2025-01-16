@@ -1,6 +1,6 @@
 <# 
 request-certificate-with-az.ps1 Version: 20231101
-C. Hannebauer - glueckkanja-gab
+C. Hannebauer - glueckkanja
 
   .DESCRIPTION
     Uses .NET to generate an RSA key, az to submit it to SCEPman's CSR endpoint with AAD authentication, and again .NET Core to merge the issued certificate with the RSA private key to a PFX file.
