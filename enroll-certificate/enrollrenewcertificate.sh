@@ -20,27 +20,41 @@
 
 
 # Example use:
-# sh enrollcertificate.sh https://your-scepman-domain.azurewebsites.net/ api://123guid cert-name cert-directory key-directory root.pem
+# sh enrollcertificate.sh -u https://your-scepman-domain.azurewebsites.net/ api://123guid cert-name cert-directory key-directory root.pem
 
-# Default certificate type
+# Default certificate type and command
 CERT_TYPE="user"
+CERT_COMMAND="auto"
 
-# # Parse command-line options
-# while getopts ":u:d:" opt; do
-#   case ${opt} in
-#     u )
-#       CERT_TYPE="user"
-#       ;;
-#     d )
-#       CERT_TYPE="device"
-#       ;;
-#     \? )
-#       echo "Usage: -u for user certificate, -d for device certificate" 1>&2
-#       exit 1
-#       ;;
-#   esac
-# done
-# shift 1
+# Parse command-line options
+while getopts ":udrwx" opt; do
+  case ${opt} in
+    u )
+      CERT_TYPE="user"
+      CERT_COMMAND="auto"
+      ;;
+    d )
+      CERT_TYPE="device"
+      CERT_COMMAND="auto"
+      ;;
+    r )
+      CERT_COMMAND="renewal"
+      ;;
+    w )
+      CERT_TYPE="user"
+      CERT_COMMAND="initial"
+      ;;
+    x )
+      CERT_TYPE="device"
+      CERT_COMMAND="initial"
+      ;;
+    \? )
+      echo "Usage: -u for user certificate, -d for device certificate, -r for renewal, -w for initial enrollment of a user, -x for initial enrollment of a device" 1>&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND -1))
 
 APPSERVICE_URL="$1"
 API_SCOPE="$2"
@@ -78,6 +92,8 @@ log_error() {
 
 
 log_debug "Starting the certificate enrollment/renewal script"
+
+log_debug "CERT_TYPE: $CERT_TYPE; CERT_COMMAND: $CERT_COMMAND"
 
 ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
 ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
