@@ -160,12 +160,34 @@ else
 
     else
         log_debug "CERT_TYPE is device"
-        echo "DEVICE CERTIFICATE NOT YET IMPLEMENTED"
-        log_error "Device certificate not yet implemented, exiting"
-        DEVICE_ID=$(az rest --method get --uri "https://graph.microsoft.com/v1.0/me/managedDevices" --query "value[0].id" -o tsv)
-        SUBJECT="/CN=$DEVICE_ID"
-        EXTENSION1="subjectAltName=URI:IntuneDeviceId://{whatever the device ID is, not yet implemented}"
-        exit 1
+        
+        REGISTRATION_FILE=~/.config/intune/registration.toml
+        if [[ ! -f $REGISTRATION_FILE ]]; then
+            log_error "Intune registration.toml could not be found in $REGISTRATION_FILE"
+            echo "Intune registration.toml could not be found in $REGISTRATION_FILE"
+            exit 1
+        fi
+
+        DEVICE_ID=$(cat $REGISTRATION_FILE | grep -oP '^device_hint = "\K[^"]*')
+        AAD_DEVICE_ID=$(cat $REGISTRATION_FILE | grep -oP '^aad_device_hint = "\K[^"]*')
+
+        # Check if DeviceId could be found in registration file
+        if [[ ! -z "${DEVICE_ID}" ]]; then
+            log_debug "Found Intune DeviceId"
+
+            SUBJECT="/CN=$DEVICE_ID"
+            EXTENSION1="subjectAltName=URI:IntuneDeviceId://$DEVICE_ID"
+        else
+            if [[ -z "${AAD_DEVICE_ID}" ]]; then
+                log_error "Neither Intune DeviceId nor Entra DeviceId could be found"
+                exit 1
+            fi
+
+            log_debug "Intune DeviceId could not be found"
+            log_debug "Entra DeviceId will be used"
+
+            SUBJECT="/CN=$AAD_DEVICE_ID"
+        fi
     fi
 
     az login --scope "$API_SCOPE/.default" --allow-no-subscriptions
