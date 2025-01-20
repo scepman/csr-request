@@ -13,6 +13,9 @@ C. Hannebauer - glueckkanja
   .PARAMETER ScepmanApiScope
     The scope of the API, which by default has the form api://<api-id>. You can copy the value from your Certificate Master's SCEPmanAPIScope setting (see https://docs.scepman.com/advanced-configuration/application-settings-1/azure-ad#appconfig-authconfig-scepmanapiscope)
 
+  .PARAMETER AddUserPrincipalName
+    Add the UserPrincipalName to the SAN extension of the CSR
+    
   .PARAMETER CertificateSubject
     The subject of the certificate to be created, e.g. CN=MyCert
 
@@ -43,6 +46,7 @@ param (
     [Parameter(Mandatory=$true)][string]$ScepmanUrl,
     [Parameter(Mandatory=$true)][string]$ScepmanApiScope,
     [string]$certificateSubject = "CN=MyCert",
+    [switch]$AddUserPrincipalName,
     [string]$password = "password",
     [switch]$LegacyCryptography
 )
@@ -56,13 +60,24 @@ $csr = new-object System.Security.Cryptography.X509Certificates.CertificateReque
 
 # Add the EKU extension to the CSR, as an example for adding an extension
 $ekuOidCollection = new-object System.Security.Cryptography.OidCollection
-$oidServerAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1") # Server Authentication
-$null = $ekuOidCollection.Add($oidServerAuth)
+# $oidServerAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1") # Server Authentication
+# $null = $ekuOidCollection.Add($oidServerAuth)
 $oidClientAuth = new-object System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.2") # Client Authentication
 $null = $ekuOidCollection.Add($oidClientAuth)
 $extEku = new-object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($ekuOidCollection, $false)
 
 $csr.CertificateExtensions.Add($extEku)
+
+If($AddUserPrincipalName) {
+  $UserPrincipalName = az ad signed-in-user show | ConvertFrom-Json | Select-Object -ExpandProperty userPrincipalName
+
+  # Add the SAN extension to the CSR, as an example for adding an extension
+  $sanBuilder = New-Object System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder
+  $sanBuilder.AddUserPrincipalName($UserPrincipalName)
+  $extSan = $sanBuilder.Build($false)
+
+  $csr.CertificateExtensions.Add($extSan)
+}
 
 $binCsr = $csr.CreateSigningRequest()
 $csrPath = Join-Path (Get-Location) "mycert.csr"
