@@ -5,18 +5,26 @@
 # Commands (not yet implemented):
 # -u for user certificate with auto-detection whether it is an initial enrollment or renewal
 # -d for device certificate with auto-detection whether it is an initial enrollment or renewal
+# -s for server certificate with auto-detection whether it is an initial enrollment or renewal
 # -r for renewal
 # -w for initial enrollment of a user
 # -x for initial enrollment of a device
+# -y for initial enrollment of a server certificate
+
 
 # Arguments:
-# $1 = SCEPman app service URL
-# $2 = API scope of SCEPman-api app registration
-# $3 = Desired name of certificate
-# $4 = Directory where cert is to be installed
-# $5 = Directory where key is to be installed
-# $6 = Root certificate
+# $1 = Command to control the certificate enrollment/renewal process
+# $2 = SCEPman app service URL
+# $3 = API scope of SCEPman-api app registration
+# $4 = Directory the certificate should be stored in as well as its private key and root certificate
+# $5 = Desired name of certificate
+# $6 = Desired name of private key
 # $7 = Renewal threshold in days
+
+# In case of server certificate, the script will use the following arguments additionally:
+# $8 = Application (client) ID of the service principal
+# $9 = Client secret of the service principal
+# $10 = Tenant ID of the service principal
 
 
 # Example use:
@@ -27,15 +35,22 @@ CERT_TYPE="user"
 CERT_COMMAND="auto"
 
 # Parse command-line options
-while getopts ":udrwx" opt; do
+while getopts ":udsrwxy" opt; do
   case ${opt} in
     u )
       CERT_TYPE="user"
       CERT_COMMAND="auto"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
       ;;
     d )
       CERT_TYPE="device"
       CERT_COMMAND="auto"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
+      ;;
+    s )
+      CERT_TYPE="server"
+      CERT_COMMAND="auto"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.1"
       ;;
     r )
       CERT_COMMAND="renewal"
@@ -43,26 +58,46 @@ while getopts ":udrwx" opt; do
     w )
       CERT_TYPE="user"
       CERT_COMMAND="initial"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
       ;;
     x )
       CERT_TYPE="device"
       CERT_COMMAND="initial"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
+      ;;
+    y )
+      CERT_TYPE="server"
+      CERT_COMMAND="initial"
+      EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.1"
       ;;
     \? )
-      echo "Usage: -u for user certificate, -d for device certificate, -r for renewal, -w for initial enrollment of a user, -x for initial enrollment of a device" 1>&2
+      echo "Usage: -u for user certificate, -d for device certificate, -r for renewal, -w for initial enrollment of a user, -x for initial enrollment of a device, -s for server certificate, -y for initial enrollment of a server certificate" 1>&2
       exit 1
       ;;
   esac
 done
 shift $((OPTIND -1))
 
+# Parameters applicable to all certificate types
 APPSERVICE_URL="$1"
 API_SCOPE="$2"
-CERTNAME="$3"
-ABS_CERDIR=$(readlink -f "$4")
-ABS_KEYDIR=$(readlink -f "$5")
-ABS_ROOT=$(readlink -f "$6")
-RENEWAL_THRESHOLD_DAYS="$7"
+CERT_DIR="$3"
+CERT_NAME="$4"
+KEY_NAME="$5"
+
+RENEWAL_THRESHOLD_DAYS="$6"
+
+if [[ $CERT_TYPE == "server" ]]; then
+    AUTH_CLIENT_ID="$7"
+    AUTH_CLIENT_SECRET="$8"
+    AUTH_TENANT_ID="${9}"
+fi
+
+# Concat absolute paths
+KEY_DIR=$CERT_DIR
+CERT_PATH="$CERT_DIR/$CERT_NAME.pem"
+ROOT_PATH="$CERT_DIR/SCEPmanRoot.cer"
+KEY_PATH="$CERT_DIR/$KEY_NAME"
 
 # Define the log level (DEBUG, INFO, ERROR), defaulting to INFO
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
@@ -142,6 +177,15 @@ authenticate_interactive() {
     az login --scope "$api_scope/.default" --allow-no-subscriptions
 }
 
+authenticate_service_principal() {
+    client_id=$1
+    client_secret=$2
+    tenant_id=$3
+
+    log debug "Authenticate service principal"
+    az login --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
+}
+
 get_access_token() {
     api_scope = $1
 
@@ -166,20 +210,26 @@ ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
 
 log debug "APPSERVICE_URL: $APPSERVICE_URL"
 log debug "API_SCOPE: $API_SCOPE"
-log debug "CERTNAME: $CERTNAME"
-log debug "ABS_CERDIR: $ABS_CERDIR"
-log debug "ABS_KEYDIR: $ABS_KEYDIR"
+log debug "CERT_NAME: $CERT_NAME"
+log debug "CERT_PATH: $CERT_PATH"
+log debug "KEY_PATH: $KEY_PATH"
 log debug "RENEWAL_THRESHOLD_DAYS: $RENEWAL_THRESHOLD_DAYS"
-log debug "ABS_KEY: $ABS_KEY"
-log debug "ABS_CER: $ABS_CER"
 
-SECONDS_IN_DAY="86400"
-if [[ -z "$RENEWAL_THRESHOLD_DAYS" ]]; then
-    RENEWAL_THRESHOLD_DAYS="30"
+if [[ $CERT_TYPE == "server" ]]; then
+    log debug "AUTH_CLIENT_ID: $AUTH_CLIENT_ID"
+    log debug "AUTH_CLIENT_SECRET: $AUTH_CLIENT_SECRET"
+    log debug "AUTH_TENANT_ID: $AUTH_TENANT_ID"
 fi
-RENEWAL_THRESHOLD=$(($RENEWAL_THRESHOLD_DAYS * $SECONDS_IN_DAY))
 
-log debug "RENEWAL_THRESHOLD: $RENEWAL_THRESHOLD"
+# Verify directories
+if ! [ -d $CERT_DIR ]; then
+  mkdir -p $CERT_DIR
+fi
+
+if ! [ -d $KEY_DIR ]; then
+  mkdir -p $KEY_DIR
+fi
+
 
 TEMP=$(mktemp -d tmpXXXXXXX)
 TEMP_CSR="$TEMP/tmp.csr"
@@ -191,20 +241,79 @@ log debug "Temporary directory created: $TEMP"
 
 trap "rm -r $TEMP" EXIT
 
-    check_certificate $ABS_CER $ABS_ROOT $ABS_KEY $APPSERVICE_URL $RENEWAL_THRESHOLD_DAYS
+# Check if the certificate exists and requires renewal
+if [[ $CERT_COMMAND  == "renewal" || $CERT_COMMAND  == "auto" ]]; then
+    log debug "Checking certificate status"
 
+    # Make sure we have a root certificate
+    if ! [ -f "$ROOT_PATH" ]; then
+        log info "No root certificate has been passed"
+        log info "Download root certificate to $ROOT_PATH"
+        log debug "Download URL is $ROOT_PATH"
+        get_root_certificate $APPSERVICE_URL $ROOT_PATH
+    else
+        log info "Root certificate found in $ROOT_PATH"
+    fi
+
+    CERT_STATUS=$(check_certificate $CERT_PATH $ROOT_PATH $KEY_PATH $APPSERVICE_URL $RENEWAL_THRESHOLD_DAYS)
+
+    log debug "CERT_STATUS: $CERT_STATUS"
+
+    case $CERT_STATUS in
+        1)
+            if [[ $CERT_COMMAND == "renewal" ]]; then
+                log info "No certificate found but command is renewal, exiting"
+                exit 0
+            else 
+                log info "No certificate found but command is auto. Enacting enrollment protocol"
+                CERT_COMMAND="initial"
+            fi
+            ;;
+        2)
+            log error "The certificate exists but no private key can be found, exiting"
+            exit 1
+            ;;
+        3)
+            log error "OCSP failed - probably invalid paths or revoked certificate, exiting"
+            exit 1
+            ;;
+        4)
+            log info "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
+            exit 0
+            ;;
+        0)
+            log info "Certificate is valid and needs renewal"
+            CERT_COMMAND="renewal"
+            ;;
+        *)
+            log error "Unknown certificate status, exiting"
+            exit 1
+            ;;
+    esac
+fi
+
+if [ $CERT_COMMAND == "renewal" ]; then
+    log info "Certificate $CERT_PATH will be renewed"
+
+    # Set certificate variables for renewal
     SUBJECT="/CN=Contoso"
-    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
+    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$CERT_PATH" --key "$KEY_PATH" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
-else
-    log info "Cert does not exist in file $ABC_CER: enacting enrollment protocol"
+
+elif [[ $CERT_COMMAND == "initial" ]]; then
+    log info "Certificate $CERT_PATH will be enrolled"
 
     verify_az_installation
 
     if [[ $CERT_TYPE == "user" ]]; then
         log debug "CERT_TYPE is user"
+
+        # Authenticate and get access token
+        authenticate_interactive $API_SCOPE
+        KV_TOKEN=$(get_access_token $API_SCOPE)
+
         USER_OBJECT=$(az ad signed-in-user show)
-        UPN=$(echo "$USER_OBJECT" | grep -oP '"mail": *"\K[^"]*')
+        UPN=$(echo "$USER_OBJECT" | grep -oP '"userPrincipalName": *"\K[^"]*')
         log debug "USER_OBJECT: $USER_OBJECT"
         log debug "UPN: $UPN"
         if [[ -z "$UPN" ]]; then
@@ -214,8 +323,14 @@ else
         SUBJECT="/CN=$UPN"
         EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN"
 
-    else
+        # Concat curl command
+        CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
+    elif [[ $CERT_TYPE == "device" ]]; then
         log debug "CERT_TYPE is device"
+
+        # Authenticate and get access token
+        authenticate_interactive $API_SCOPE
+        KV_TOKEN=$(get_access_token $API_SCOPE)
         
         REGISTRATION_FILE=~/.config/intune/registration.toml
         if [[ ! -f $REGISTRATION_FILE ]]; then
@@ -242,36 +357,50 @@ else
             log debug "Entra DeviceId will be used"
 
             SUBJECT="/CN=$AAD_DEVICE_ID"
+
+            # Concat curl command
+            CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
         fi
-    fi
+    elif [[ $CERT_TYPE == "server" ]]; then
+        log debug "CERT_TYPE is server"
+        SUBJECT="/CN=Contoso"
 
-    authenticate_interactive $API_SCOPE
-
+        # Authenticate and get access token
+        authenticate_ser $API_SCOPE
     KV_TOKEN=$(get_access_token $API_SCOPE)
 
+        # Concat curl command
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
-fi
 
-EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.2"
+    else
+        log error "Invalid certificate type, exiting"
+        exit 1
+    fi
+fi
 
 # Create a CSR
 log debug "Generating RSA key"
 openssl genrsa -out "$TEMP_KEY" 4096
 log debug "Generating CSR"
+log debug "SUBJECT: $SUBJECT"
+log debug "EXTENSION1: $EXTENSION1"
+log debug "EXTENSION2: $EXTENSION2"
+
 openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
 
 # Create certificate
 log debug "Creating certificate"
+log debug "CURL_CMD: $CURL_CMD"
 echo "-----BEGIN PKCS7-----" > "$TEMP_P7B"
 eval $CURL_CMD >> "$TEMP_P7B"
 printf "\n-----END PKCS7-----" >> "$TEMP_P7B"
 log debug "Converting PKCS7 to PEM"
 openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
 if [ -f $TEMP_PEM ]; then
-    log debug "New PEM file created, copying key and certificate to $ABS_KEY and $ABS_CER, respectively"
+    log debug "New PEM file created, copying key and certificate to $KEY_PATH and $CERT_PATH, respectively"
     # only execute if new pem file created:
-    cp "$TEMP_KEY" "$ABS_KEY"
-    cp "$TEMP_PEM" "$ABS_CER"
+    cp "$TEMP_KEY" "$KEY_PATH"
+    cp "$TEMP_PEM" "$CERT_PATH"
     log info "Certificate successfully enrolled/renewed"
 else
     log error "API endpoint returned an error"
@@ -282,5 +411,5 @@ fi
 # mkdir -p "$ABS_SCRIPTDIR"
 # cd ..
 # cp renewcertificate.sh "$ABS_SCRIPTDIR/renewcertificate.sh"
-# (crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
-# (crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEYDIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
+# (crontab -l ; echo @daily "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEY_DIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
+# (crontab -l ; echo @reboot "\"$ABS_SCRIPTDIR/renewcertificate.sh\"" "\"$APPSERVICE_URL\"" "\"$ABS_CERDIR/$CERTNAME.pem\"" "\"$ABS_KEY_DIR/$CERTNAME.key\"" "\"$ABS_ROOT\"" "10") | crontab -
