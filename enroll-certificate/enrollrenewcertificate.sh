@@ -124,27 +124,25 @@ check_certificate() {
     appservice_url=$4
     renewal_threshold_days=$5
 
-    if [[ -e "$cert_path" ]]; then
-        log info "Found certificate in $cert_path"
-    else
-        log info "No certificate found in $cert_path"
-        return 1
+    if [[ ! -e "$cert_path" ]]; then
+        # Certificate does not exist
+        echo 1
+        return 0
     fi
 
     OCSP_RESPONSE=$(openssl ocsp -issuer "$root_path" -cert "$cert_path" -url "$appservice_url/ocsp")
     OCSP_STATUS=$(echo "$OCSP_RESPONSE" | grep "good")
 
-    log debug "OCSP_RESPONSE: $OCSP_RESPONSE"
-    log debug "OCSP_STATUS: $OCSP_STATUS"
-
     if [[ ! -e "$key_path" ]]; then
-        log error "The certificate exists but no private key can be found, exiting"
-        exit 1
+        # The certificate exists but no private key can be found
+        echo 2
+        return 0
     fi
 
     if [ -z "${OCSP_STATUS}" ]; then
-        log error "OCSP failed - probably invalid paths or revoked certificate, exiting"
-        exit 1
+        # OCSP failed - probably invalid paths or revoked certificate
+        echo 3
+        return 0
     fi
 
     SECONDS_IN_DAY="86400"
@@ -153,12 +151,15 @@ check_certificate() {
     fi
     renewal_threshold=$(($renewal_threshold_days * $SECONDS_IN_DAY))
 
-    if openssl x509 -checkend $renewal_threshold -noout -in "$cert_path"; then
-        log info "Certificate not expiring within the threshold of $renewal_threshold days, exiting"
-        exit 1
+    EXPIRATION_STATE=$(openssl x509 -checkend $renewal_threshold -noout -in "$cert_path")
+    if [[ $EXPIRATION_STATE == "Certificate will not expire" ]]; then
+        # Certificate does not expire withing the threshold
+        echo 4
+        return 0
     fi
 
     # Return truthy in case the certificate is valid and needs renewal
+    echo 0
     return 0
 }
 
