@@ -125,17 +125,14 @@ if [[ -e "$ABS_CER" ]]; then
     log debug "TRIMMED_STATUS: $TRIMMED_STATUS"
     if [[ ! -e "$ABS_KEY" ]]; then
         log error "The certificate exists but no private key can be found, exiting"
-        echo "The certificate exists but no private key can be found, exiting"
         exit 1
     fi
     if [ -z "${TRIMMED_STATUS}" ]; then
         log error "OCSP failed - probably invalid paths or revoked certificate, exiting"
-        echo "OCSP failed - probably invalid paths or revoked certificate, exiting" #can update this to reflect all of openssl ocsp errors
         exit 1
     fi
     if openssl x509 -checkend $RENEWAL_THRESHOLD -noout -in "$ABS_CER"; then
         log info "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
-        echo "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
         exit 1
     fi
     SUBJECT="/CN=Contoso"
@@ -146,7 +143,6 @@ else
 
     if ! command -v az &> /dev/null; then
         log error "Azure CLI (az) is not installed. Please install it and try again."
-        echo "Azure CLI (az) is not installed. Please install it and try again."
         exit 1
     else
         log debug "Azure CLI (az) is installed."
@@ -160,7 +156,6 @@ else
         log debug "UPN: $UPN"
         if [[ -z "$UPN" ]]; then
             log error "No UPN found, exiting"
-            echo "No UPN found, exiting"
             exit 1
         fi
         SUBJECT="/CN=$UPN"
@@ -172,7 +167,6 @@ else
         REGISTRATION_FILE=~/.config/intune/registration.toml
         if [[ ! -f $REGISTRATION_FILE ]]; then
             log error "Intune registration.toml could not be found in $REGISTRATION_FILE"
-            echo "Intune registration.toml could not be found in $REGISTRATION_FILE"
             exit 1
         fi
 
@@ -204,7 +198,6 @@ else
 
     if [[ -z "$KV_TOKEN" ]]; then
         log error "No token could be acquired, exiting"
-        echo "No token could be acquired, exiting"
         exit 1
     fi
 
@@ -234,7 +227,6 @@ if [ -f $TEMP_PEM ]; then
     log info "Certificate successfully enrolled/renewed"
 else
     log error "API endpoint returned an error"
-    echo "API endpoint returned an error"
     exit 1
 fi
 
