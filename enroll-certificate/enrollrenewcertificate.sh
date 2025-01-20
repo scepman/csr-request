@@ -108,11 +108,11 @@ log() {
 	LEVEL=$1
 	MESSAGE=$2
 
-    if [ "$LEVEL" != "DEBUG" ]; then
+    if [ "$LEVEL" != "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
     fi
 
-    if [ "$LEVEL" == "DEBUG" ] && [ "$LOG_LEVEL" == "DEBUG" ]; then
+    if [ "$LEVEL" == "debug" ] && [ "$LOG_LEVEL" == "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
     fi
 }
@@ -200,18 +200,17 @@ authenticate_service_principal() {
 }
 
 get_access_token() {
-    api_scope = $1
+    api_scope=$1
 
-    log debug "Fetch access token"
     auth_token=$(az account get-access-token --scope "$api_scope/.default" --query accessToken --output tsv)
-    auth_token=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
+    auth_token=$(echo "$auth_token" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
 
     if [[ -z "$auth_token" ]]; then
         log error "No token could be acquired, exiting"
         exit 1
     fi
 
-    return auth_token
+    echo $auth_token
 }
 
 log debug "Starting the certificate enrollment/renewal script"
