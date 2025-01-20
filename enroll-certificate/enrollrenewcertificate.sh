@@ -162,6 +162,18 @@ check_certificate() {
     return 0
 }
 
+get_root_certificate() {
+    appservice_url=$1
+    root_path=$2
+
+    # Make sure we have a root certificate to work with
+    rootca_url="$(echo "$appservice_url" | sed 's:/*$::')/certsrv/mscep/mscep.dll/pkiclient.exe?operation=GetCACert"
+
+    log info "Download root certificate to $root_path"
+    log debug "Download URL is $rootca_url"
+    curl --silent -X GET -H "Content-Type: application/pkcs10" $rootca_url -o $root_path
+}
+
 verify_az_installation() {
     if ! command -v az &> /dev/null; then
         log error "Azure CLI is not installed, exiting"
