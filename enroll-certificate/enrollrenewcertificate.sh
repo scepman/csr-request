@@ -176,6 +176,7 @@ get_root_certificate() {
 }
 
 verify_az_installation() {
+    log debug "Check if Azure CLI is installed"
     if ! command -v az &> /dev/null; then
         log error "Azure CLI is not installed, exiting"
         exit 1
@@ -216,9 +217,6 @@ get_access_token() {
 log debug "Starting the certificate enrollment/renewal script"
 
 log debug "CERT_TYPE: $CERT_TYPE; CERT_COMMAND: $CERT_COMMAND"
-
-ABS_KEY="$ABS_KEYDIR/$CERTNAME.key"
-ABS_CER="$ABS_CERDIR/$CERTNAME.pem"
 
 log debug "APPSERVICE_URL: $APPSERVICE_URL"
 log debug "API_SCOPE: $API_SCOPE"
@@ -379,10 +377,10 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
 
         # Authenticate and get access token
         authenticate_ser $API_SCOPE
-    KV_TOKEN=$(get_access_token $API_SCOPE)
+        KV_TOKEN=$(get_access_token $API_SCOPE)
 
         # Concat curl command
-    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
+        CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
 
     else
         log error "Invalid certificate type, exiting"
