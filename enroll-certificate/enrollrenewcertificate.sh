@@ -82,6 +82,80 @@ log() {
     fi
 }
 
+check_certificate() {
+    cert_path=$1
+    root_path=$2
+    key_path=$3
+    appservice_url=$4
+    renewal_threshold_days=$5
+
+    if [[ -e "$cert_path" ]]; then
+        log info "Found certificate in $cert_path"
+    else
+        log info "No certificate found in $cert_path"
+        return 1
+    fi
+
+    OCSP_RESPONSE=$(openssl ocsp -issuer "$root_path" -cert "$cert_path" -url "$appservice_url/ocsp")
+    OCSP_STATUS=$(echo "$OCSP_RESPONSE" | grep "good")
+
+    log debug "OCSP_RESPONSE: $OCSP_RESPONSE"
+    log debug "OCSP_STATUS: $OCSP_STATUS"
+
+    if [[ ! -e "$key_path" ]]; then
+        log error "The certificate exists but no private key can be found, exiting"
+        exit 1
+    fi
+
+    if [ -z "${OCSP_STATUS}" ]; then
+        log error "OCSP failed - probably invalid paths or revoked certificate, exiting"
+        exit 1
+    fi
+
+    SECONDS_IN_DAY="86400"
+    if [[ -z "$renewal_threshold_days" ]]; then
+        renewal_threshold_days="30"
+    fi
+    renewal_threshold=$(($renewal_threshold_days * $SECONDS_IN_DAY))
+
+    if openssl x509 -checkend $renewal_threshold -noout -in "$cert_path"; then
+        log info "Certificate not expiring within the threshold of $renewal_threshold days, exiting"
+        exit 1
+    fi
+
+    # Return truthy in case the certificate is valid and needs renewal
+    return 0
+}
+
+verify_az_installation() {
+    if ! command -v az &> /dev/null; then
+        log error "Azure CLI is not installed, exiting"
+        exit 1
+    fi
+}
+
+authenticate_interactive() {
+    api_scope=$1
+
+    # Disable the subscriptions selection
+    az config set core.login_experience_v2=off
+    az login --scope "$api_scope/.default" --allow-no-subscriptions
+}
+
+get_access_token() {
+    api_scope = $1
+
+    log debug "Fetch access token"
+    auth_token=$(az account get-access-token --scope "$api_scope/.default" --query accessToken --output tsv)
+    auth_token=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
+
+    if [[ -z "$auth_token" ]]; then
+        log error "No token could be acquired, exiting"
+        exit 1
+    fi
+
+    return auth_token
+}
 
 log debug "Starting the certificate enrollment/renewal script"
 
@@ -117,36 +191,15 @@ log debug "Temporary directory created: $TEMP"
 
 trap "rm -r $TEMP" EXIT
 
-if [[ -e "$ABS_CER" ]]; then
-    log info "Cert already exists in file $ABC_CER: enacting renewal protocol"
-    OCSP_STATUS=$(openssl ocsp -issuer "$ABS_ROOT" -cert "$ABS_CER" -url "$APPSERVICE_URL/ocsp")
-    TRIMMED_STATUS=$(echo "$OCSP_STATUS" | grep "good")
-    log debug "OCSP_STATUS: $OCSP_STATUS"
-    log debug "TRIMMED_STATUS: $TRIMMED_STATUS"
-    if [[ ! -e "$ABS_KEY" ]]; then
-        log error "The certificate exists but no private key can be found, exiting"
-        exit 1
-    fi
-    if [ -z "${TRIMMED_STATUS}" ]; then
-        log error "OCSP failed - probably invalid paths or revoked certificate, exiting"
-        exit 1
-    fi
-    if openssl x509 -checkend $RENEWAL_THRESHOLD -noout -in "$ABS_CER"; then
-        log info "Certificate not expiring within the threshold of $RENEWAL_THRESHOLD_DAYS days, exiting"
-        exit 1
-    fi
+    check_certificate $ABS_CER $ABS_ROOT $ABS_KEY $APPSERVICE_URL $RENEWAL_THRESHOLD_DAYS
+
     SUBJECT="/CN=Contoso"
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$ABS_CER" --key "$ABS_KEY" "$APPSERVICE_URL/.well-known/est/simplereenroll"'
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 else
     log info "Cert does not exist in file $ABC_CER: enacting enrollment protocol"
 
-    if ! command -v az &> /dev/null; then
-        log error "Azure CLI (az) is not installed. Please install it and try again."
-        exit 1
-    else
-        log debug "Azure CLI (az) is installed."
-    fi
+    verify_az_installation
 
     if [[ $CERT_TYPE == "user" ]]; then
         log debug "CERT_TYPE is user"
@@ -192,14 +245,9 @@ else
         fi
     fi
 
-    az login --scope "$API_SCOPE/.default" --allow-no-subscriptions
-    KV_TOKEN=$(az account get-access-token --scope "$API_SCOPE/.default" --query accessToken --output tsv)
-    KV_TOKEN=$(echo "$KV_TOKEN" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
+    authenticate_interactive $API_SCOPE
 
-    if [[ -z "$KV_TOKEN" ]]; then
-        log error "No token could be acquired, exiting"
-        exit 1
-    fi
+    KV_TOKEN=$(get_access_token $API_SCOPE)
 
     CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
 fi
