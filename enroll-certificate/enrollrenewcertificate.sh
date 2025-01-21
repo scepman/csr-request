@@ -90,7 +90,9 @@ RENEWAL_THRESHOLD_DAYS="$6"
 if [[ $CERT_TYPE == "server" ]]; then
     AUTH_CLIENT_ID="$7"
     AUTH_CLIENT_SECRET="$8"
-    AUTH_TENANT_ID="${9}"
+    AUTH_TENANT_ID="$9"
+    SUBJECT="${10}"
+    EXTENSION1="subjectAltName=${11}"
 fi
 
 # Concat absolute paths
@@ -192,12 +194,13 @@ authenticate_interactive() {
 }
 
 authenticate_service_principal() {
-    client_id=$1
-    client_secret=$2
-    tenant_id=$3
+    api_scope=$1
+    client_id=$2
+    client_secret=$3
+    tenant_id=$4
 
     log debug "Authenticate service principal"
-    az login --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
+    az login --scope "$api_scope/.default" --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
 }
 
 get_access_token() {
@@ -227,8 +230,9 @@ log debug "RENEWAL_THRESHOLD_DAYS: $RENEWAL_THRESHOLD_DAYS"
 
 if [[ $CERT_TYPE == "server" ]]; then
     log debug "AUTH_CLIENT_ID: $AUTH_CLIENT_ID"
-    log debug "AUTH_CLIENT_SECRET: $AUTH_CLIENT_SECRET"
     log debug "AUTH_TENANT_ID: $AUTH_TENANT_ID"
+    log debug "SUBJECT: $SUBJECT"
+    log debug "EXTENSION: $EXTENSION1"
 fi
 
 # Verify directories
@@ -367,16 +371,15 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
             log debug "Entra DeviceId will be used"
 
             SUBJECT="/CN=$AAD_DEVICE_ID"
+        fi
 
             # Concat curl command
             CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
-        fi
     elif [[ $CERT_TYPE == "server" ]]; then
         log debug "CERT_TYPE is server"
-        SUBJECT="/CN=Contoso"
 
         # Authenticate and get access token
-        authenticate_ser $API_SCOPE
+        authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
         KV_TOKEN=$(get_access_token $API_SCOPE)
 
         # Concat curl command
