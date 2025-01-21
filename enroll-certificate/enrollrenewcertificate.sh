@@ -319,6 +319,11 @@ if [ $CERT_COMMAND == "renewal" ]; then
     EXTENSION1="subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$UPN" # remove this
 
 elif [[ $CERT_COMMAND == "initial" ]]; then
+    if [ -f "$CERT_PATH" ]; then
+        log error "Certificate file is already present but command "initial" is passed. Exiting"
+        exit 1
+    fi
+
     log info "Certificate $CERT_PATH will be enrolled"
 
     verify_az_installation
@@ -377,8 +382,8 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
             SUBJECT="/CN=$AAD_DEVICE_ID"
         fi
 
-            # Concat curl command
-            CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
+        # Concat curl command
+        CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
     elif [[ $CERT_TYPE == "server" ]]; then
         log debug "CERT_TYPE is server"
 
@@ -417,7 +422,7 @@ if [ -z ${var+x} ]; then
     log debug "EXTENSION2 is unset. Assume Renewal. Skipping in csr"
     openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1"
 else
-openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
+    openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
 fi
 
 # Create certificate
