@@ -36,7 +36,7 @@ CERT_TYPE="user"
 CERT_COMMAND="auto"
 
 # Parse command-line options
-while getopts ":udsrwxy" opt; do
+while getopts ":udsrwxyc" opt; do
   case ${opt} in
     u )
       CERT_TYPE="user"
@@ -97,6 +97,13 @@ if [[ $CERT_TYPE == "server" ]]; then
     AUTH_TENANT_ID="$9"
     SUBJECT="${10}"
     EXTENSION1="subjectAltName=${11}"
+fi
+
+if [[ $CERT_COMMAND == "csr" ]]; then
+    AUTH_CLIENT_ID="$7"
+    AUTH_CLIENT_SECRET="$8"
+    AUTH_TENANT_ID="$9"
+    CSR_PATH="${10}"
 fi
 
 # Concat absolute paths
@@ -401,28 +408,42 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
 fi
 
 if [[ $CERT_COMMAND == "csr" ]]; then
+    # Verify passed csr and key
+    if [[ ! -f $CSR_PATH ]]; then
+        log error "CSR file not found, exiting"
+        exit 1
+    fi
+
+    if [[ ! -f $KEY_PATH ]]; then
+        log error "Private key not found, exiting"
+        exit 1
+    fi
+
+    # Authenticate and get access token
+    log debug "Authenticate and get access token"
+    authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
+    KV_TOKEN=$(get_access_token $API_SCOPE)
+
     log info "Submitting CSR"
+    log debug "CSR_PATH: $CSR_PATH"
+
+    # Concat curl command
+    CURL_CMD='curl -X POST --data "@$CSR_PATH" -H "Content-Type: application/pkcs10" -H "Authorization: Bearer $KV_TOKEN" "$APPSERVICE_URL/.well-known/est/simpleenroll" >> "$TEMP_P7B"'
+else
+    # Create a CSR
+    log debug "Generating RSA key"
+    openssl genrsa -out "$TEMP_KEY" 4096
+    log debug "Generating CSR"
     log debug "SUBJECT: $SUBJECT"
     log debug "EXTENSION1: $EXTENSION1"
     log debug "EXTENSION2: $EXTENSION2"
 
-    # Concat curl command
-    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$CERT_PATH" --key "$KEY_PATH" "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"'
-fi
-
-# Create a CSR
-log debug "Generating RSA key"
-openssl genrsa -out "$TEMP_KEY" 4096
-log debug "Generating CSR"
-log debug "SUBJECT: $SUBJECT"
-log debug "EXTENSION1: $EXTENSION1"
-log debug "EXTENSION2: $EXTENSION2"
-
-if [ -z ${var+x} ]; then
-    log debug "EXTENSION2 is unset. Assume Renewal. Skipping in csr"
-    openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1"
-else
-    openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
+    if [ -z ${var+x} ]; then
+        log debug "EXTENSION2 is unset. Assume Renewal. Skipping in csr"
+        openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1"
+    else
+        openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
+    fi
 fi
 
 # Create certificate
@@ -436,7 +457,12 @@ openssl pkcs7 -print_certs -in "$TEMP_P7B" -out "$TEMP_PEM"
 if [ -f $TEMP_PEM ]; then
     log debug "New PEM file created, copying key and certificate to $KEY_PATH and $CERT_PATH, respectively"
     # only execute if new pem file created:
-    cp "$TEMP_KEY" "$KEY_PATH"
+
+    # Only copy temp key for non csr scenarios
+    if ! [[ $CERT_COMMAND == "csr" ]]; then
+        cp "$TEMP_KEY" "$KEY_PATH"
+    fi
+    
     cp "$TEMP_PEM" "$CERT_PATH"
     log info "Certificate successfully enrolled/renewed"
 else
