@@ -10,6 +10,7 @@
 # -w for initial enrollment of a user
 # -x for initial enrollment of a device
 # -y for initial enrollment of a server certificate
+# -c for submitting a present certificate signing request
 
 
 # Arguments:
@@ -70,8 +71,11 @@ while getopts ":udsrwxy" opt; do
       CERT_COMMAND="initial"
       EXTENSION2="extendedKeyUsage=1.3.6.1.5.5.7.3.1"
       ;;
+    c )
+      CERT_COMMAND="csr"
+      ;;
     \? )
-      echo "Usage: -u for user certificate, -d for device certificate, -r for renewal, -w for initial enrollment of a user, -x for initial enrollment of a device, -s for server certificate, -y for initial enrollment of a server certificate" 1>&2
+      echo "Usage: -u for user certificate, -d for device certificate, -r for renewal, -w for initial enrollment of a user, -x for initial enrollment of a device, -s for server certificate, -y for initial enrollment of a server certificate, -c for CSR submission" 1>&2
       exit 1
       ;;
   esac
@@ -391,6 +395,16 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
     fi
 fi
 
+if [[ $CERT_COMMAND == "csr" ]]; then
+    log info "Submitting CSR"
+    log debug "SUBJECT: $SUBJECT"
+    log debug "EXTENSION1: $EXTENSION1"
+    log debug "EXTENSION2: $EXTENSION2"
+
+    # Concat curl command
+    CURL_CMD='curl -X POST --data "@$TEMP_CSR" -H "Content-Type: application/pkcs10" --cert "$CERT_PATH" --key "$KEY_PATH" "$APPSERVICE_URL/.well-known/est/simplereenroll" >> "$TEMP_P7B"'
+fi
+
 # Create a CSR
 log debug "Generating RSA key"
 openssl genrsa -out "$TEMP_KEY" 4096
@@ -399,7 +413,12 @@ log debug "SUBJECT: $SUBJECT"
 log debug "EXTENSION1: $EXTENSION1"
 log debug "EXTENSION2: $EXTENSION2"
 
+if [ -z ${var+x} ]; then
+    log debug "EXTENSION2 is unset. Assume Renewal. Skipping in csr"
+    openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1"
+else
 openssl req -new -key "$TEMP_KEY" -sha256 -out "$TEMP_CSR" -subj "$SUBJECT" -addext "$EXTENSION1" -addext "$EXTENSION2"
+fi
 
 # Create certificate
 log debug "Creating certificate"
