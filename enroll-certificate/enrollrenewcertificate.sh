@@ -29,7 +29,7 @@
 
 
 # Example use:
-# sh enrollcertificate.sh -u https://your-scepman-domain.azurewebsites.net/ api://123guid cert-name cert-directory key-directory root.pem
+# sh enrollcertificate.sh -u https://your-scepman-domain.azurewebsites.net/ api://123guid/scope cert-name cert-directory key-directory root.pem
 
 # Default certificate type and command
 CERT_TYPE="user"
@@ -201,7 +201,7 @@ authenticate_interactive() {
 
     # Disable the subscriptions selection
     az config set core.login_experience_v2=off
-    az login --scope "$api_scope/.default" --allow-no-subscriptions
+    az login --scope "$api_scope" --allow-no-subscriptions
 }
 
 authenticate_service_principal() {
@@ -211,13 +211,13 @@ authenticate_service_principal() {
     tenant_id=$4
 
     log debug "Authenticate service principal"
-    az login --scope "$api_scope/.default" --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
+    az login --scope "$api_scope" --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
 }
 
 get_access_token() {
     api_scope=$1
 
-    auth_token=$(az account get-access-token --scope "$api_scope/.default" --query accessToken --output tsv)
+    auth_token=$(az account get-access-token --scope "$api_scope" --query accessToken --output tsv)
     auth_token=$(echo "$auth_token" | sed 's/[[:space:]]*$//') # Remove trailing whitespace
 
     if [[ -z "$auth_token" ]]; then
