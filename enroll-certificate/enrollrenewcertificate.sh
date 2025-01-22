@@ -97,6 +97,9 @@ if [[ $CERT_TYPE == "server" ]]; then
     AUTH_TENANT_ID="$9"
     SUBJECT="${10}"
     EXTENSION1="subjectAltName=${11}"
+
+    # Add the .default scope for service principal authentication
+    API_SCOPE="$API_SCOPE/.default"
 fi
 
 if [[ $CERT_COMMAND == "csr" ]]; then
