@@ -83,7 +83,7 @@ shift $((OPTIND -1))
 # Parameters applicable to all certificate types
 APPSERVICE_URL="$1"
 API_SCOPE="$2"
-CERT_DIR="$3"
+CERT_DIR=$(readlink -f "$3")
 CERT_NAME="$4"
 KEY_NAME="$5"
 
