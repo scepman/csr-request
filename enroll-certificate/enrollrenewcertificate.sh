@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Version: 2024-12-16
-
-# Commands (not yet implemented):
+# Commands:
 # -u for user certificate with auto-detection whether it is an initial enrollment or renewal
 # -d for device certificate with auto-detection whether it is an initial enrollment or renewal
 # -s for server certificate with auto-detection whether it is an initial enrollment or renewal
