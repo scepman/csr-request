@@ -27,7 +27,7 @@
 
 
 # Example use:
-# sh enrollcertificate.sh -u https://your-scepman-domain.azurewebsites.net/ api://123guid/scope cert-name cert-directory key-directory root.pem
+# sh enrollrenewcertificate.sh -u https://scepman.contoso.net/ api://b7d17d51-8b6d-45eb-b42b-3dae638cd5bc/Cert.Enroll ~/certs/ "myCertificate" "myKey" 30
 
 # Default certificate type and command
 CERT_TYPE="user"
