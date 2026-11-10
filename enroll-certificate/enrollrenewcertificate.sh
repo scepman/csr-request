@@ -221,6 +221,56 @@ authenticate_service_principal() {
     az login --scope "$api_scope" --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
 }
 
+check_msi() {
+    imds_endpoint="http://169.254.169.254/metadata/identity/oauth2/token"
+    api_version="2025-04-07"
+    resource="https://management.azure.com/"
+    timeout=2
+
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -H "Metadata:true" --max-time $timeout "${imds_endpoint}?api-version=${api_version}&resource=${resource}")
+
+    if [[ $http_code == "200" ]]; then
+        log debug "Managed Identity is available"
+        echo 1
+        return 1
+    fi
+
+    log debug "Managed Identity is not available"
+    echo 0
+    return 0
+}
+
+authenticate_msi() {
+    api_scope=$1
+    client_id=$2
+
+    if [[ -n "$client_id" ]]; then
+        log debug "Using user assigned managed identity with client ID $client_id for authentication"
+        az login --scope "$api_scope" --identity --client-id "$client_id"
+        return 0
+    fi
+
+    log debug "Authenticate with managed identity"
+    az login --scope "$api_scope" --identity
+    return 0
+}
+
+authenticate_non_interactive() {
+    api_scope=$1
+    client_id=$2
+    client_secret=$3
+    tenant_id=$4
+
+    log info "Trying to authenticate non-interactively with managed identity"
+    if [[ $(check_msi) ]]; then
+        authenticate_msi $api_scope $client_id
+    else
+        log info "Managed identity authentication is not available, falling back to service principal authentication"
+        [[ -z "$client_id" || -z "$client_secret" || -z "$tenant_id" ]] && log error "Client ID, client secret and tenant ID must be provided for service principal authentication" && exit 1
+        authenticate_service_principal $api_scope $client_id $client_secret $tenant_id
+    fi
+}
+
 get_access_token() {
     api_scope=$1
 
@@ -402,7 +452,7 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
         log debug "CERT_TYPE is server"
 
         # Authenticate and get access token
-        authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
+        authenticate_non_interactive $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
         KV_TOKEN=$(get_access_token $API_SCOPE)
 
         # Concat curl command
@@ -428,7 +478,7 @@ if [[ $CERT_COMMAND == "csr" ]]; then
 
     # Authenticate and get access token
     log debug "Authenticate and get access token"
-    authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
+    authenticate_non_interactive $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
     KV_TOKEN=$(get_access_token $API_SCOPE)
 
     log info "Submitting CSR"
