@@ -116,18 +116,24 @@ KEY_PATH="$CERT_DIR/$KEY_NAME"
 # Define the log level (DEBUG, INFO, ERROR), defaulting to INFO
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 LOG_FILE="${0##*/}.$(date '+%Y-%m-%d').log"
+LOG_SYSLOG="${LOG_SYSLOG:-0}" # Set to 1 to also log to syslog
+LOG_SYSLOG_FACILITY="${LOG_SYSLOG_FACILITY:-local0}" # Syslog facility to use
+LOG_SYSLOG_TAG="${LOG_SYSLOG_TAG:-scepman-enroll}"
 
 # Logging functions
 log() {
 	LEVEL=$1
 	MESSAGE=$2
+    PRIORITY="$LOG_SYSLOG_FACILITY.$(echo $LEVEL | tr '[:upper:]' '[:lower:]')"
 
     if [ "$LEVEL" != "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
+        [[ $LOG_SYSLOG == 1 ]] && logger --id=$$ -t "$LOG_SYSLOG_TAG" -p "$PRIORITY" "$MESSAGE"
     fi
 
     if [ "$LEVEL" == "debug" ] && [ "$LOG_LEVEL" == "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
+        [[ $LOG_SYSLOG == 1 ]] && logger --id=$$ -t "$LOG_SYSLOG_TAG" -p "$PRIORITY" "$MESSAGE"
     fi
 }
 
