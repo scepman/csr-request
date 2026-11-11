@@ -245,12 +245,12 @@ authenticate_msi() {
     if [[ -n "$client_id" ]]; then
         log debug "Using user assigned managed identity with client ID $client_id for authentication"
         az login --scope "$api_scope" --identity --client-id "$client_id"
-        return 0
+        return $?
     fi
 
     log debug "Authenticate with managed identity"
     az login --scope "$api_scope" --identity
-    return 0
+    return $?
 }
 
 authenticate_non_interactive() {
@@ -258,6 +258,12 @@ authenticate_non_interactive() {
     client_id=$2
     client_secret=$3
     tenant_id=$4
+
+    if [[ -n "$client_id" && -n "$client_secret" && -n "$tenant_id" ]]; then
+        log info "Using service principal authentication: client id, client secret and tenant id are explicitly provided"
+        authenticate_service_principal $api_scope $client_id $client_secret $tenant_id
+        return $?
+    fi
 
     log info "Trying to authenticate non-interactively with managed identity"
     if check_msi; then
