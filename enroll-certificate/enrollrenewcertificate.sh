@@ -231,13 +231,11 @@ check_msi() {
 
     if [[ $http_code == "200" ]]; then
         log debug "Managed Identity is available"
-        echo 1
-        return 1
+        return 0
     fi
 
     log debug "Managed Identity is not available"
-    echo 0
-    return 0
+    return 1
 }
 
 authenticate_msi() {
@@ -262,7 +260,7 @@ authenticate_non_interactive() {
     tenant_id=$4
 
     log info "Trying to authenticate non-interactively with managed identity"
-    if [[ $(check_msi) ]]; then
+    if check_msi; then
         authenticate_msi $api_scope $client_id
     else
         log info "Managed identity authentication is not available, falling back to service principal authentication"
