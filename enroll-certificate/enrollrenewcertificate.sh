@@ -116,18 +116,24 @@ KEY_PATH="$CERT_DIR/$KEY_NAME"
 # Define the log level (DEBUG, INFO, ERROR), defaulting to INFO
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 LOG_FILE="${0##*/}.$(date '+%Y-%m-%d').log"
+LOG_SYSLOG="${LOG_SYSLOG:-0}" # Set to 1 to also log to syslog
+LOG_SYSLOG_FACILITY="${LOG_SYSLOG_FACILITY:-local0}" # Syslog facility to use
+LOG_SYSLOG_TAG="${LOG_SYSLOG_TAG:-scepman-enroll}"
 
 # Logging functions
 log() {
 	LEVEL=$1
 	MESSAGE=$2
+    PRIORITY="$LOG_SYSLOG_FACILITY.$(echo $LEVEL | tr '[:upper:]' '[:lower:]')"
 
     if [ "$LEVEL" != "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
+        [[ $LOG_SYSLOG == 1 ]] && logger --id=$$ -t "$LOG_SYSLOG_TAG" -p "$PRIORITY" "$MESSAGE"
     fi
 
     if [ "$LEVEL" == "debug" ] && [ "$LOG_LEVEL" == "debug" ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$LEVEL] $MESSAGE" | tee -a "$LOG_FILE"
+        [[ $LOG_SYSLOG == 1 ]] && logger --id=$$ -t "$LOG_SYSLOG_TAG" -p "$PRIORITY" "$MESSAGE"
     fi
 }
 
@@ -213,6 +219,60 @@ authenticate_service_principal() {
 
     log debug "Authenticate service principal"
     az login --scope "$api_scope" --service-principal --username $client_id --password $client_secret --tenant $tenant_id --allow-no-subscriptions
+}
+
+check_msi() {
+    imds_endpoint="http://169.254.169.254/metadata/identity/oauth2/token"
+    api_version="2025-04-07"
+    resource="https://management.azure.com/"
+    timeout=2
+
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -H "Metadata:true" --max-time $timeout "${imds_endpoint}?api-version=${api_version}&resource=${resource}")
+
+    if [[ $http_code == "200" ]]; then
+        log debug "Managed Identity is available"
+        return 0
+    fi
+
+    log debug "Managed Identity is not available"
+    return 1
+}
+
+authenticate_msi() {
+    api_scope=$1
+    client_id=$2
+
+    if [[ -n "$client_id" ]]; then
+        log debug "Using user assigned managed identity with client ID $client_id for authentication"
+        az login --scope "$api_scope" --identity --client-id "$client_id"
+        return $?
+    fi
+
+    log debug "Authenticate with managed identity"
+    az login --scope "$api_scope" --identity
+    return $?
+}
+
+authenticate_non_interactive() {
+    api_scope=$1
+    client_id=$2
+    client_secret=$3
+    tenant_id=$4
+
+    if [[ -n "$client_id" && -n "$client_secret" && -n "$tenant_id" ]]; then
+        log info "Using service principal authentication: client id, client secret and tenant id are explicitly provided"
+        authenticate_service_principal $api_scope $client_id $client_secret $tenant_id
+        return $?
+    fi
+
+    log info "Trying to authenticate non-interactively with managed identity"
+    if check_msi; then
+        authenticate_msi $api_scope $client_id
+    else
+        log info "Managed identity authentication is not available, falling back to service principal authentication"
+        [[ -z "$client_id" || -z "$client_secret" || -z "$tenant_id" ]] && log error "Client ID, client secret and tenant ID must be provided for service principal authentication" && exit 1
+        authenticate_service_principal $api_scope $client_id $client_secret $tenant_id
+    fi
 }
 
 get_access_token() {
@@ -396,7 +456,7 @@ elif [[ $CERT_COMMAND == "initial" ]]; then
         log debug "CERT_TYPE is server"
 
         # Authenticate and get access token
-        authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
+        authenticate_non_interactive $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
         KV_TOKEN=$(get_access_token $API_SCOPE)
 
         # Concat curl command
@@ -422,7 +482,7 @@ if [[ $CERT_COMMAND == "csr" ]]; then
 
     # Authenticate and get access token
     log debug "Authenticate and get access token"
-    authenticate_service_principal $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
+    authenticate_non_interactive $API_SCOPE $AUTH_CLIENT_ID $AUTH_CLIENT_SECRET $AUTH_TENANT_ID
     KV_TOKEN=$(get_access_token $API_SCOPE)
 
     log info "Submitting CSR"
